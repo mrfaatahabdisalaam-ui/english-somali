@@ -22,3 +22,8 @@ data/
 freeuser.txt
 
 public/uploads/
+
+public/*.backup
+public/*.safe-backup
+public/*.current-backup
+public/*.step3-backup
