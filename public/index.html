@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="so">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#111827">
+  <title>English Somali Academy</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+  <div class="app">
+
+    <header class="topbar">
+      <div>
+        <h1>English Somali Academy</h1>
+        <p>Baro English-ka adigoo dhageysanaya</p>
+      </div>
+      <button id="logoutBtn" class="btn btn-danger hidden">Logout</button>
+    </header>
+
+    <main>
+
+      <!-- LOGIN -->
+      <section id="login" class="login-page">
+        <div class="login-shell">
+
+          <div class="login-hero">
+            <div class="brand-mark">ES</div>
+            <div class="eyebrow">ENGLISH • SOMALI</div>
+            <h2>English ku baro<br><span>si fudud.</span></h2>
+            <p>
+              Daawo videos, dhageyso English-ka, akhri subtitles-ka
+              English & Somali, oo casharkaaga ku celi xawaaraha aad rabto.
+            </p>
+
+            <div class="hero-stats">
+              <div>
+                <strong>500+</strong>
+                <small>Casharro</small>
+              </div>
+              <div>
+                <strong>EN ↔ SO</strong>
+                <small>Subtitles</small>
+              </div>
+              <div>
+                <strong>30</strong>
+                <small>Maalmood</small>
+              </div>
+            </div>
+
+            <div class="hero-trust">
+              <span>✓</span>
+              <div>
+                <strong>Waxbarasho dhab ah</strong>
+                <small>Ku baro adigoo daawanaya oo dhageysanaya.</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="login-box">
+            <div class="login-top">
+              <div class="login-icon">→</div>
+              <div>
+                <span>WELCOME BACK</span>
+                <h2>Ku Soo Dhawoow 👋</h2>
+              </div>
+            </div>
+
+            <p class="muted">
+              Geli lambarkaaga telefoonka si aad u bilowdo waxbarashada.
+            </p>
+
+            <label for="phone">📱 Lambarka Telefoonka</label>
+            <input
+              id="phone"
+              type="tel"
+              inputmode="numeric"
+              autocomplete="tel"
+              placeholder="61xxxxxxx"
+            >
+
+            <button id="loginBtn" class="btn btn-primary full" type="button">
+              Gal Account-ka <span>→</span>
+            </button>
+
+            <a class="whatsapp-btn" href="https://wa.me/252616785024" target="_blank" rel="noopener">
+              <span>💬</span>
+              <div>
+                <strong>WhatsApp nagala soo xiriir</strong>
+                <small>Su'aal ama caawimaad? Halkan nala soo hadal.</small>
+              </div>
+              <b>→</b>
+            </a>
+
+            <div class="login-divider">
+              <span>ENGLISH SOMALI MEMBERSHIP</span>
+            </div>
+
+            <div class="login-note">
+              🔒 Xogtaada waa ammaan.
+              <br>
+              <small>Membership-kaaga iyo casharradaada hal meel.</small>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ADMIN LOGIN -->
+      <section id="adminLogin" class="card auth-card hidden">
+        <div class="section-icon">👑</div>
+        <h2>Admin Login</h2>
+        <p class="muted">Geli password-ka maamulka.</p>
+
+        <label for="adminPassword">Password</label>
+        <input
+          id="adminPassword"
+          type="password"
+          autocomplete="current-password"
+          placeholder="Admin password"
+        >
+
+        <button id="adminLoginBtn" class="btn btn-primary full">
+          Gal Admin
+        </button>
+
+        <button id="hideAdminBtn" class="link-btn" type="button">
+          ← Dib ugu noqo Login
+        </button>
+      </section>
+
+      <!-- PAYMENT -->
+      <section id="pay" class="card payment-card hidden">
+        <div class="section-icon">💳</div>
+        <h2>Fur Membership-ka</h2>
+
+        <div class="price-box">
+          <strong>$3</strong>
+          <span>30 maalmood</span>
+        </div>
+
+        <div class="payment-info">
+          <div>
+            <span>Habka lacag bixinta</span>
+            <strong id="paymentMethod">Hormuud</strong>
+          </div>
+
+          <div>
+            <span>Number-ka lacagta</span>
+            <strong id="paymentNumber">616785024</strong>
+          </div>
+
+          <div>
+            <span>Magaca</span>
+            <strong id="paymentName">Abdifitaah Abdisalaam Xuseyn</strong>
+          </div>
+        </div>
+
+        <div class="payment-steps">
+          <h3>📲 Sida lacagta loo diro</h3>
+
+          <p>
+            Lacagta <strong>$3</strong> u dir number-ka kore adigoo isticmaalaya
+            taleefankaaga Hormuud.
+          </p>
+
+          <div class="payment-code">
+            <span>Ku qor taleefankaaga:</span>
+            <strong>*712*61xxxxxxx*3#</strong>
+          </div>
+
+          <p>
+            ✅ Kadib markaad lacagta dirto, WhatsApp nagala soo xiriir
+            <strong>616785024</strong> oo noo sheeg inaad lacagta soo dirtay.
+            Admin-ka ayaa xaqiijinaya lacagta kadibna website-ka ayaa laguu furayaa.
+          </p>
+
+          <h3>📱 Lambarka aad sanduuqa hoose ku qoreyso</h3>
+
+          <p>
+            Sanduuqa hoose geli <strong>lambarka Hormuudka aad lacagta kasoo dirtay</strong>.
+          </p>
+
+          <div class="sender-example">
+            Tusaale: <strong>61xxxxxxx</strong>
+          </div>
+
+          <p class="payment-note">
+            ⚠️ Ha gelin Transaction Number. Geli lambarka taleefanka aad lacagta
+            kasoo dirtay si Admin-ku u xaqiijiyo lacagtaada.
+          </p>
+
+          <p>
+            💬 Marka lacagta la xaqiijiyo, <strong>membership-kaaga ayaa laguu furayaa</strong>
+            waxaadna isticmaali kartaa website-ka.
+          </p>
+        </div>
+
+        <a class="payment-whatsapp" href="https://wa.me/252616785024" target="_blank" rel="noopener">
+          💬 WhatsApp nagala soo xiriir — 616785024
+        </a>
+
+        <label for="ref">📱 Lambarka aad lacagta kasoo dirtay</label>
+        <input
+          id="ref"
+          type="text"
+          autocomplete="off"
+          placeholder="Tusaale: 61xxxxxxx"
+        >
+
+        <button id="payBtn" class="btn btn-primary full">
+          Dir Codsiga Lacagta
+        </button>
+
+        <div id="pending" class="notice hidden"></div>
+      </section>
+
+      <!-- ACCOUNT -->
+      <section id="account" class="card hidden">
+        <div class="account-head">
+          <div>
+            <span class="eyebrow">ACCOUNT</span>
+            <h2>Account-kaaga</h2>
+          </div>
+          <span id="accountBadge" class="badge">Member</span>
+        </div>
+
+        <div class="account-grid">
+          <div>
+            <span>Telefoon</span>
+            <strong id="accountPhone">-</strong>
+          </div>
+
+          <div>
+            <span>Xaaladda</span>
+            <strong id="accountStatus">-</strong>
+          </div>
+
+          <div>
+            <span>Membership</span>
+            <strong id="expiry">-</strong>
+          </div>
+        </div>
+      </section>
+
+      <!-- ADMIN PANEL -->
+      <section id="adminPanel" class="hidden">
+
+        <div class="admin-title">
+          <div>
+            <span class="eyebrow">ADMIN DASHBOARD</span>
+            <h2>Maamulka Website-ka</h2>
+          </div>
+          <span class="admin-badge">ADMIN</span>
+        </div>
+
+        <!-- STATS -->
+        <div id="adminStats" class="admin-stats">
+
+          <div class="stat-card">
+            <span>👥</span>
+            <small>Users</small>
+            <strong id="statUsers">0</strong>
+          </div>
+
+          <div class="stat-card">
+            <span>🎬</span>
+            <small>Lessons</small>
+            <strong id="statLessons">0</strong>
+          </div>
+
+          <div class="stat-card">
+            <span>⏳</span>
+            <small>Pending</small>
+            <strong id="statPending">0</strong>
+          </div>
+
+          <div class="stat-card">
+            <span>✅</span>
+            <small>Approved</small>
+            <strong id="statApproved">0</strong>
+          </div>
+
+          <div class="stat-card">
+            <span>❌</span>
+            <small>Rejected</small>
+            <strong id="statRejected">0</strong>
+          </div>
+
+          <div class="stat-card">
+            <span>🟢</span>
+            <small>Active</small>
+            <strong id="statActive">0</strong>
+          </div>
+
+        </div>
+
+        <!-- USERS -->
+        <section class="card admin-section">
+          <div class="admin-section-head">
+            <div>
+              <h3>👥 Users</h3>
+              <p class="muted">Maamul dadka isticmaala website-ka.</p>
+            </div>
+            <button id="refreshUsers" class="btn btn-secondary">
+              Refresh
+            </button>
+          </div>
+
+          <div id="adminUsers" class="admin-users"></div>
+        </section>
+
+        <!-- PAYMENTS -->
+        <section class="card admin-section">
+          <div class="admin-section-head">
+            <div>
+              <h3>💳 Payment Requests</h3>
+              <p class="muted">Hubi oo approve/reject garee lacagaha.</p>
+            </div>
+            <button id="refreshPayments" class="btn btn-secondary">
+              Refresh
+            </button>
+          </div>
+
+          <div id="adminPayments"></div>
+        </section>
+
+        <!-- ADD LESSON -->
+        <section class="card admin-section">
+          <div class="admin-section-head">
+            <div>
+              <h3>🎬 Ku dar Lesson cusub</h3>
+              <p class="muted">
+                Upload video iyo subtitles English + Somali.
+              </p>
+            </div>
+          </div>
+
+          <form id="lessonForm">
+
+            <label for="video">Video</label>
+            <input
+              id="video"
+              type="file"
+              accept="video/*"
+            >
+
+            <div id="timestampEditor" class="timestamp-editor hidden">
+              <video
+                id="timestampVideo"
+                class="timestamp-video"
+                controls
+                playsinline
+                preload="metadata">
+              </video>
+
+              <div class="timestamp-time">
+                <strong id="timestampCurrent">00:00.0</strong>
+                <span>/</span>
+                <span id="timestampDuration">00:00.0</span>
+              </div>
+
+              <div class="timestamp-buttons">
+                <button type="button" id="setStart" class="btn btn-secondary">
+                  ▶ Bilow waqtigan
+                </button>
+
+                <button type="button" id="setEnd" class="btn btn-secondary">
+                  ⏹ Dhammee waqtigan
+                </button>
+              </div>
+            </div>
+
+            <label for="title">Lesson title</label>
+            <input
+              id="title"
+              type="text"
+              placeholder="Tusaale: English Listening Lesson 1"
+            >
+
+            <label for="description">Description</label>
+            <textarea
+              id="description"
+              rows="3"
+              placeholder="Sharaxaad kooban..."
+            ></textarea>
+
+            <div class="subtitle-head">
+              <div>
+                <h4>Subtitles</h4>
+                <p class="muted">
+                  Geli waqtiga, English-ka iyo Somali-ga.
+                </p>
+              </div>
+
+              <button
+                id="addSubtitle"
+                type="button"
+                class="btn btn-secondary"
+              >
+                + Subtitle
+              </button>
+            </div>
+
+            <div id="subtitleRows" class="subtitle-rows"></div>
+
+            <button
+              type="button"
+              id="aiSubtitleBtn"
+              class="btn btn-secondary full"
+            >
+              🤖 AI Subtitle Samee
+            </button>
+
+            <button
+              type="submit"
+              class="btn btn-primary full"
+            >
+              Upload Lesson
+            </button>
+
+            <div id="uploadStatus" class="notice hidden"></div>
+          </form>
+        </section>
+
+        <!-- LESSON MANAGEMENT -->
+        <section class="card admin-section">
+          <div class="admin-section-head">
+            <div>
+              <h3>📚 Lessons-ka jira</h3>
+              <p class="muted">
+                Wax ka beddel ama tirtir lessons-ka.
+              </p>
+            </div>
+            <button id="refreshLessons" class="btn btn-secondary">
+              Refresh
+            </button>
+          </div>
+
+          <div id="adminLessons"></div>
+        </section>
+
+      </section>
+
+      <!-- CONTENT -->
+      <section id="content" class="hidden">
+
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">COURSE</span>
+            <h2>English Listening Lessons</h2>
+          </div>
+          <p class="muted">
+            Dhageyso, akhri subtitles-ka, oo ku celceli.
+          </p>
+        </div>
+
+        <div id="lessons"></div>
+
+      </section>
+
+    </main>
+
+    <footer>
+      <p>© English Somali Academy</p>
+    </footer>
+
+  </div>
+
+  <!-- LESSON EDITOR -->
+  <div id="lessonEditorOverlay" class="lesson-editor-overlay hidden">
+
+    <div class="lesson-editor">
+
+      <div class="editor-header">
+        <div>
+          <span class="eyebrow">LESSON EDITOR</span>
+          <h2>Edit Lesson</h2>
+        </div>
+
+        <button
+          id="editCancelTop"
+          type="button"
+          class="icon-btn"
+          aria-label="Close"
+        >
+          ✕
+        </button>
+      </div>
+
+      <label for="editLessonTitle">Title</label>
+      <input
+        id="editLessonTitle"
+        type="text"
+        placeholder="Lesson title"
+      >
+
+      <label for="editLessonDescription">Description</label>
+      <textarea
+        id="editLessonDescription"
+        rows="3"
+        placeholder="Description"
+      ></textarea>
+
+      <div class="subtitle-head">
+        <div>
+          <h4>Subtitles</h4>
+          <p class="muted">Edit English iyo Somali.</p>
+        </div>
+
+        <button
+          id="editAddSubtitle"
+          type="button"
+          class="btn btn-secondary"
+        >
+          + Subtitle
+        </button>
+      </div>
+
+      <div id="editSubtitleRows" class="subtitle-rows"></div>
+
+      <div class="editor-actions">
+        <button
+          id="editCancel"
+          type="button"
+          class="btn btn-secondary"
+        >
+          Cancel
+        </button>
+
+        <button
+          id="editSave"
+          type="button"
+          class="btn btn-primary"
+        >
+          Save Changes
+        </button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

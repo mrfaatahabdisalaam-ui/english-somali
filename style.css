@@ -1,0 +1,45 @@
+
+/* ===== FINAL SUBTITLE DESIGN — WHITE TEXT + CYAN ACTIVE WORD ===== */
+
+/* English sentence — white like reference design */
+.lesson .line .en{
+  color:#ffffff !important;
+  font-weight:900 !important;
+  text-shadow:none !important;
+}
+
+/* Every normal word */
+.lesson .line .en .word{
+  color:#ffffff !important;
+  text-decoration:none !important;
+  border-bottom:none !important;
+  background:transparent !important;
+}
+
+/* Active spoken word — cyan box + WHITE text */
+.lesson .line.active .en .word.current{
+  display:inline-block !important;
+  background:#25c7ff !important;
+  color:#ffffff !important;
+  padding:4px 8px !important;
+  margin:0 2px !important;
+  border-radius:10px !important;
+  text-decoration:none !important;
+  border:none !important;
+  box-shadow:0 0 18px rgba(37,199,255,.55) !important;
+}
+
+/* Somali translation */
+.lesson .line .so{
+  color:#b9d9ee !important;
+  font-weight:800 !important;
+  text-shadow:none !important;
+}
+
+/* Remove underline completely */
+.lesson .line a,
+.lesson .line .word,
+.lesson .line .word.current{
+  text-decoration:none !important;
+}
+
