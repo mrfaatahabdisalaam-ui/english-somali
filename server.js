@@ -980,7 +980,7 @@ app.post(
 app.delete(
   '/api/admin/lesson/:id',
   admin,
-  (req, res) => {
+  async (req, res) => {
 
     let lessons = read('lessons.json');
 
@@ -994,26 +994,33 @@ app.delete(
       });
     }
 
-    const file = path.join(
-      UP,
-      lessons[index].video
-    );
+    const lesson = lessons[index];
+
+    // Delete video from Cloudinary
+    if (lesson.videoPublicId) {
+      try {
+        await cloudinary.uploader.destroy(
+          lesson.videoPublicId,
+          { resource_type: 'video' }
+        );
+      } catch (e) {
+        console.error('CLOUDINARY DELETE ERROR:', e);
+      }
+    }
+
+    // Delete old local video if it exists
+    const file = path.join(UP, lesson.video || '');
 
     if (fs.existsSync(file)) {
       fs.unlinkSync(file);
     }
 
     lessons.splice(index, 1);
-
     write('lessons.json', lessons);
 
-    res.json({
-      ok: true
-    });
+    res.json({ ok: true });
   }
 );
-
-
 
 /* =========================
    EDIT LESSON
