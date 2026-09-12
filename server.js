@@ -6,10 +6,25 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 const OpenAI = require('openai');
+const { v2: cloudinary } = require('cloudinary');
 const { execFile } = require('child_process');
 const util = require('util');
 
 const execFileAsync = util.promisify(execFile);
+
+async function uploadVideoToCloudinary(filePath) {
+  return await cloudinary.uploader.upload(filePath, {
+    resource_type: 'video',
+    folder: 'english-somali/videos'
+  });
+}
+
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
@@ -377,7 +392,7 @@ app.get('/api/lessons', auth, (req, res) => {
   res.json(
     read('lessons.json').map((lesson) => ({
       ...lesson,
-      video: '/uploads/' + lesson.video
+      video: lesson.videoUrl || ('/uploads/' + lesson.video)
     }))
   );
 });
@@ -519,7 +534,7 @@ app.get('/api/admin/payments', admin, (req, res) => {
 app.post(
   '/api/admin/payment/:id/approve',
   admin,
-  (req, res) => {
+  async (req, res) => {
 
     let payments = read('payments.json');
 
@@ -898,31 +913,23 @@ app.get('/api/admin/lessons', admin, (req, res) => {
 app.post(
   '/api/admin/lesson',
   admin,
-  upload.single('video'),
-  (req, res) => {
+  async (req, res) => {
 
-    if (!req.file) {
+    const { title, description, videoUrl, videoPublicId, lines } = req.body;
+
+    if (!videoUrl || !videoPublicId) {
       return res.status(400).json({
-        error: 'Video geli'
+        error: 'Video-ga Cloudinary lama helin'
       });
     }
 
-    let lines;
-
-    try {
-      lines = JSON.parse(
-        req.body.lines || '[]'
-      );
-    } catch (e) {
+    if (!title || !String(title).trim()) {
       return res.status(400).json({
-        error: 'Subtitles JSON sax ma aha'
+        error: 'Magaca casharka geli'
       });
     }
 
-    if (
-      !Array.isArray(lines) ||
-      !lines.length
-    ) {
+    if (!Array.isArray(lines) || !lines.length) {
       return res.status(400).json({
         error: 'Ku dar ugu yaraan hal subtitle'
       });
@@ -933,18 +940,15 @@ app.post(
     const item = {
       id: Date.now().toString(),
 
-      title:
-        String(
-          req.body.title ||
-          'English Listening Lesson'
-        ).trim(),
+      title: String(title).trim(),
 
-      description:
-        String(
-          req.body.description || ''
-        ).trim(),
+      description: String(
+        description || ''
+      ).trim(),
 
-      video: req.file.filename,
+      video: videoPublicId,
+      videoUrl: String(videoUrl),
+      videoPublicId: String(videoPublicId),
 
       lines: lines.map((x) => ({
         start: Number(x.start),
@@ -953,8 +957,7 @@ app.post(
         so: String(x.so || '')
       })),
 
-      createdAt:
-        new Date().toISOString()
+      createdAt: new Date().toISOString()
     };
 
     lessons.unshift(item);
@@ -963,7 +966,8 @@ app.post(
 
     res.json({
       ok: true,
-      item
+      item,
+      message: '✅ Casharka waa la geliyey.'
     });
   }
 );
@@ -1078,6 +1082,14 @@ app.put(
     });
   }
 );
+
+app.get('/api/cloudinary-config', admin, (req, res) => {
+  res.json({
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+    uploadPreset: 'english_somali_videos'
+  });
+});
+
 
 /* =========================
    FRONTEND FALLBACK

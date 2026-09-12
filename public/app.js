@@ -1099,7 +1099,6 @@ async function uploadLesson(event) {
   }
 
   const rows = [...document.querySelectorAll('#subtitleRows .subtitle-row')];
-
   const lines = [];
 
   for (let i = 0; i < rows.length; i++) {
@@ -1131,19 +1130,12 @@ async function uploadLesson(event) {
     return;
   }
 
-  const form = new FormData();
-
-  form.append('video', video);
-  form.append('title', title);
-  form.append('description', description);
-  form.append('lines', JSON.stringify(lines));
-
   const status = $('uploadStatus');
   const button = document.querySelector('#lessonForm button[type="submit"]');
 
   try {
     if (status) {
-      status.textContent = '⏳ Video-ga waa la upload-gareynayaa...';
+      status.textContent = '⏳ Cloudinary ayaa video-ga qaadanaya...';
       show('uploadStatus');
     }
 
@@ -1152,9 +1144,39 @@ async function uploadLesson(event) {
       button.textContent = '⏳ Uploading...';
     }
 
+    const config = await api('/api/cloudinary-config');
+
+    const cloudinaryForm = new FormData();
+    cloudinaryForm.append('file', video);
+    cloudinaryForm.append('upload_preset', config.uploadPreset);
+
+    const cloudinaryResponse = await fetch(
+      `https://api.cloudinary.com/v1_1/${config.cloudName}/video/upload`,
+      {
+        method: 'POST',
+        body: cloudinaryForm
+      }
+    );
+
+    const cloudinaryData =
+      await cloudinaryResponse.json().catch(() => ({}));
+
+    if (!cloudinaryResponse.ok) {
+      throw new Error(
+        cloudinaryData.error?.message ||
+        `Cloudinary upload failed: HTTP ${cloudinaryResponse.status}`
+      );
+    }
+
     const result = await api('/api/admin/lesson', {
       method: 'POST',
-      body: form
+      body: JSON.stringify({
+        title,
+        description,
+        videoUrl: cloudinaryData.secure_url,
+        videoPublicId: cloudinaryData.public_id,
+        lines
+      })
     });
 
     if (status) {
@@ -1171,13 +1193,19 @@ async function uploadLesson(event) {
 
     await loadAdminLessons();
     await loadAdminStats();
+
   } catch (error) {
     if (status) {
       status.textContent =
-        '❌ ' + (error.error || 'Upload ayaa fashilmay.');
+        '❌ ' + (error.error || error.message || 'Upload ayaa fashilmay.');
     }
 
-    toast(error.error || 'Upload ayaa fashilmay.');
+    toast(
+      error.error ||
+      error.message ||
+      'Upload ayaa fashilmay.'
+    );
+
   } finally {
     if (button) {
       button.disabled = false;

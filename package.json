@@ -6,10 +6,11 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "cloudinary": "^2.11.0",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "express-session": "^1.18.1",
-    "multer": "^1.4.5-lts.1",
+    "multer": "^1.4.5-lts.2",
     "openai": "^7.10.0",
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",
