@@ -20,10 +20,10 @@ async function api(url, options = {}) {
   }
 
   const response = await fetch(url, config);
-  const data = await response.json().catch(() => ({}));
+  const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw data;
+    throw data || { error: `HTTP ${response.status}` };
   }
 
   return data;
