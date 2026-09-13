@@ -9,6 +9,7 @@ const OpenAI = require('openai');
 const { v2: cloudinary } = require('cloudinary');
 const { execFile } = require('child_process');
 const util = require('util');
+const { db, userFromRow } = require('./db-models');
 
 const execFileAsync = util.promisify(execFile);
 
@@ -135,12 +136,15 @@ function isAdminPhone(phone) {
   return normalizePhone(phone) === normalizePhone(ADMIN_PHONE);
 }
 
-function userFrom(req) {
-  if (!req.session.userId) return null;
+async function getUserById(id) {
+  if (!id) return null;
 
-  return read('users.json').find(
-    (u) => u.id === req.session.userId
+  const result = await db.query(
+    `SELECT * FROM users WHERE id = $1`,
+    [id]
   );
+
+  return userFromRow(result.rows[0]);
 }
 
 function paid(user) {
@@ -168,36 +172,37 @@ function paid(user) {
   return false;
 }
 
-function auth(req, res, next) {
-  const user = userFrom(req);
+async function auth(req, res, next) {
+  try {
+    const user = await getUserById(req.session.userId);
 
-  if (!user) {
-    return res.status(401).json({
-      error: 'Login required'
-    });
+    if (!user) {
+      return res.status(401).json({ error: 'Login required' });
+    }
+
+    req.currentUser = user;
+    next();
+  } catch (error) {
+    console.error('AUTH DB ERROR:', error);
+    res.status(500).json({ error: 'Database error' });
   }
-
-  req.currentUser = user;
-  next();
 }
 
-function admin(req, res, next) {
-  const user = userFrom(req);
+async function admin(req, res, next) {
+  try {
+    const user = await getUserById(req.session.userId);
 
-  if (!req.session.admin && !(user && user.role === 'admin')) {
-    return res.status(403).json({
-      error: 'Admin only'
-    });
+    if (!req.session.admin && !(user && user.role === 'admin')) {
+      return res.status(403).json({ error: 'Admin only' });
+    }
+
+    req.currentUser = user;
+    next();
+  } catch (error) {
+    console.error('ADMIN DB ERROR:', error);
+    res.status(500).json({ error: 'Database error' });
   }
-
-  req.currentUser = user;
-  next();
 }
-
-
-/* =========================
-   CONFIG
-========================= */
 
 app.get('/api/config', (req, res) => {
   res.json({
@@ -217,55 +222,73 @@ app.get('/api/config', (req, res) => {
    USER LOGIN
 ========================= */
 
-app.post('/api/login', (req, res) => {
-  const phone = normalizePhone(req.body.phone);
+app.post('/api/login', async (req, res) => {
+  try {
+    const phone = normalizePhone(req.body.phone);
 
-  if (!/^61[0-9]{7}$/.test(phone)) {
-    return res.status(400).json({
-      error: 'Number-ka waa inuu noqdaa 61xxxxxxx oo 9 digit ah'
+    if (!/^61[0-9]{7}$/.test(phone)) {
+      return res.status(400).json({
+        error: 'Number-ka waa inuu noqdaa 61xxxxxxx oo 9 digit ah'
+      });
+    }
+
+    const result = await db.query(
+      `SELECT * FROM users`
+    );
+
+    let row = result.rows.find(
+      (u) => normalizePhone(u.phone) === phone
+    );
+
+    if (!row) {
+      const id = Date.now().toString();
+
+      const inserted = await db.query(
+        `INSERT INTO users
+          (id, phone, role, free_access, expires_at)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [
+          id,
+          phone,
+          isAdminPhone(phone) ? 'admin' : 'user',
+          false,
+          null
+        ]
+      );
+
+      row = inserted.rows[0];
+    } else if (isAdminPhone(phone) && row.role !== 'admin') {
+      const updated = await db.query(
+        `UPDATE users
+         SET role = 'admin'
+         WHERE id = $1
+         RETURNING *`,
+        [row.id]
+      );
+
+      row = updated.rows[0];
+    }
+
+    const user = userFromRow(row);
+
+    req.session.userId = user.id;
+
+    res.json({
+      phone: user.phone,
+      role: user.role,
+      isAdmin: user.role === 'admin',
+      paid: paid(user),
+      expiresAt: user.expiresAt
+    });
+  } catch (error) {
+    console.error('LOGIN DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Login database error'
     });
   }
-
-  let users = read('users.json');
-
-  let user = users.find(
-    (x) => normalizePhone(x.phone) === phone
-  );
-
-  if (!user) {
-    user = {
-      id: Date.now().toString(),
-      phone,
-      role: isAdminPhone(phone) ? 'admin' : 'user',
-      expiresAt: null,
-      createdAt: new Date().toISOString()
-    };
-
-    users.push(user);
-    write('users.json', users);
-  } else {
-
-    /*
-      Haddii number-ku yahay ADMIN_PHONE,
-      role admin ayaa lagu xaqiijinayaa server-ka.
-    */
-    if (isAdminPhone(phone)) {
-      user.role = 'admin';
-      write('users.json', users);
-    }
-  }
-
-  req.session.userId = user.id;
-
-  res.json({
-    phone: user.phone,
-    role: user.role || 'user',
-    isAdmin: user.role === 'admin',
-    paid: paid(user),
-    expiresAt: user.expiresAt
-  });
 });
-
 
 /* =========================
    LOGOUT
@@ -284,21 +307,32 @@ app.post('/api/logout', (req, res) => {
    CURRENT USER
 ========================= */
 
-app.get('/api/me', auth, (req, res) => {
-  const pending = read('payments.json').some(
-    (p) =>
-      p.userId === req.currentUser.id &&
-      p.status === 'pending'
-  );
+app.get('/api/me', auth, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT EXISTS(
+         SELECT 1
+         FROM payments
+         WHERE user_id = $1
+           AND status = 'pending'
+       ) AS pending`,
+      [req.currentUser.id]
+    );
 
-  res.json({
-    phone: req.currentUser.phone,
-    role: req.currentUser.role || 'user',
-    isAdmin: req.currentUser.role === 'admin',
-    paid: paid(req.currentUser),
-    expiresAt: req.currentUser.expiresAt,
-    pending
-  });
+    const pending = result.rows[0].pending;
+
+    res.json({
+      phone: req.currentUser.phone,
+      role: req.currentUser.role || 'user',
+      isAdmin: req.currentUser.role === 'admin',
+      paid: paid(req.currentUser),
+      expiresAt: req.currentUser.expiresAt,
+      pending
+    });
+  } catch (error) {
+    console.error('ME DB ERROR:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 
@@ -306,160 +340,218 @@ app.get('/api/me', auth, (req, res) => {
    PAYMENT REQUEST
 ========================= */
 
-app.post('/api/payment-request', auth, (req, res) => {
+app.post('/api/payment-request', auth, async (req, res) => {
+  try {
+    /*
+      ADMIN lacag looma baahan.
+    */
+    if (req.currentUser.role === 'admin') {
+      return res.status(400).json({
+        error: 'Admin-ku payment uma baahna. Admin access waa FREE.'
+      });
+    }
 
-  /*
-    ADMIN lacag looma baahan.
-  */
-  if (req.currentUser.role === 'admin') {
-    return res.status(400).json({
-      error: 'Admin-ku payment uma baahna. Admin access waa FREE.'
+    const senderPhone = String(
+      req.body.senderPhone || req.body.reference || ''
+    ).trim().replace(/\s+/g, '');
+
+    if (!/^61[0-9]{7}$/.test(senderPhone)) {
+      return res.status(400).json({
+        error: 'Geli lambarka Hormuudka aad lacagta kasoo dirtay (61xxxxxxx).'
+      });
+    }
+
+    const pendingResult = await db.query(
+      `SELECT EXISTS(
+         SELECT 1
+         FROM payments
+         WHERE user_id = $1
+           AND status = 'pending'
+       ) AS pending`,
+      [req.currentUser.id]
+    );
+
+    if (pendingResult.rows[0].pending) {
+      return res.status(400).json({
+        error: 'Codsi payment hore ayaa sugaya xaqiijin.'
+      });
+    }
+
+    const id = Date.now().toString();
+
+    await db.query(
+      `INSERT INTO payments
+       (
+         id,
+         user_id,
+         phone,
+         amount,
+         currency,
+         payment_method,
+         payment_number,
+         payment_name,
+         sender_phone,
+         reference,
+         status
+       )
+       VALUES
+       ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [
+        id,
+        req.currentUser.id,
+        req.currentUser.phone,
+        PRICE,
+        'USD',
+        PAYMENT_METHOD,
+        PAYMENT_NUMBER,
+        PAYMENT_NAME,
+        senderPhone,
+        senderPhone,
+        'pending'
+      ]
+    );
+
+    res.json({
+      ok: true,
+      message:
+        'Payment-kaaga waa la helay. Admin ayaa hubinaya.'
+    });
+  } catch (error) {
+    console.error('PAYMENT REQUEST DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Payment database error'
     });
   }
-
-  const senderPhone = String(
-    req.body.senderPhone || req.body.reference || ''
-  ).trim().replace(/\s+/g, '');
-
-  if (!/^61[0-9]{7}$/.test(senderPhone)) {
-    return res.status(400).json({
-      error: 'Geli lambarka Hormuudka aad lacagta kasoo dirtay (61xxxxxxx).'
-    });
-  }
-
-  let payments = read('payments.json');
-
-  const pending = payments.some(
-    (p) =>
-      p.userId === req.currentUser.id &&
-      p.status === 'pending'
-  );
-
-  if (pending) {
-    return res.status(400).json({
-      error: 'Codsi payment hore ayaa sugaya xaqiijin.'
-    });
-  }
-
-  payments.push({
-    id: Date.now().toString(),
-
-    userId: req.currentUser.id,
-    phone: req.currentUser.phone,
-
-    amount: PRICE,
-    currency: 'USD',
-
-    paymentMethod: PAYMENT_METHOD,
-    paymentNumber: PAYMENT_NUMBER,
-    paymentName: PAYMENT_NAME,
-
-    senderPhone,
-    reference: senderPhone,
-
-    status: 'pending',
-
-    createdAt: new Date().toISOString()
-  });
-
-  write('payments.json', payments);
-
-  res.json({
-    ok: true,
-    message:
-      'Payment-kaaga waa la helay. Admin ayaa hubinaya.'
-  });
 });
-
 
 /* =========================
    LESSONS
 ========================= */
 
-app.get('/api/lessons', auth, (req, res) => {
+app.get('/api/lessons', auth, async (req, res) => {
+  try {
+    /*
+      ADMIN = FREE
+      User = membership active required.
+    */
+    if (!paid(req.currentUser)) {
+      return res.status(402).json({
+        error: 'Subscription expired',
+        expiresAt: req.currentUser.expiresAt
+      });
+    }
 
-  /*
-    ADMIN = FREE
-    User = membership active required.
-  */
-  if (!paid(req.currentUser)) {
-    return res.status(402).json({
-      error: 'Subscription expired',
-      expiresAt: req.currentUser.expiresAt
+    const result = await db.query(
+      `SELECT *
+       FROM lessons
+       ORDER BY created_at DESC`
+    );
+
+    res.json(
+      result.rows.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        description: lesson.description || '',
+        video: lesson.video_url || (
+          lesson.video
+            ? '/uploads/' + lesson.video
+            : ''
+        ),
+        videoUrl: lesson.video_url || '',
+        videoPublicId: lesson.video_public_id || '',
+        lines: Array.isArray(lesson.lines)
+          ? lesson.lines
+          : [],
+        createdAt: lesson.created_at
+          ? new Date(lesson.created_at).toISOString()
+          : null
+      }))
+    );
+  } catch (error) {
+    console.error('LESSONS DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Lessons database error'
     });
   }
-
-  res.json(
-    read('lessons.json').map((lesson) => ({
-      ...lesson,
-      video: lesson.videoUrl || ('/uploads/' + lesson.video)
-    }))
-  );
 });
-
 
 /* =========================
    ADMIN LOGIN
 ========================= */
 
-app.post('/api/admin/login', (req, res) => {
-  const password = String(
-    req.body.password || ''
-  );
+app.post('/api/admin/login', async (req, res) => {
+  try {
+    const password = String(req.body.password || '');
 
-  const passwordHash = crypto
-    .createHash('sha256')
-    .update(password)
-    .digest('hex');
+    const passwordHash = crypto
+      .createHash('sha256')
+      .update(password)
+      .digest('hex');
 
-  if (passwordHash !== ADMIN_PASSWORD) {
-    return res.status(401).json({
-      error: 'Password khalad ah'
+    if (passwordHash !== ADMIN_PASSWORD) {
+      return res.status(401).json({
+        error: 'Password khalad ah'
+      });
+    }
+
+    req.session.admin = true;
+
+    const existing = await db.query(
+      `SELECT *
+       FROM users
+       WHERE phone = $1
+       LIMIT 1`,
+      [ADMIN_PHONE]
+    );
+
+    let row;
+
+    if (existing.rows.length === 0) {
+      const id = 'admin-' + Date.now();
+
+      const inserted = await db.query(
+        `INSERT INTO users
+         (id, phone, role, free_access, expires_at)
+         VALUES ($1, $2, 'admin', true, NULL)
+         RETURNING *`,
+        [id, ADMIN_PHONE]
+      );
+
+      row = inserted.rows[0];
+    } else {
+      const updated = await db.query(
+        `UPDATE users
+         SET role = 'admin',
+             free_access = true
+         WHERE phone = $1
+         RETURNING *`,
+        [ADMIN_PHONE]
+      );
+
+      row = updated.rows[0];
+    }
+
+    const adminUser = userFromRow(row);
+
+    req.session.userId = adminUser.id;
+
+    res.json({
+      ok: true,
+      role: 'admin',
+      isAdmin: true,
+      paid: true,
+      message: 'Admin login successful. FREE access.'
+    });
+  } catch (error) {
+    console.error('ADMIN LOGIN DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Admin database error'
     });
   }
-
-  req.session.admin = true;
-
-  /*
-    Hubi/abuuri admin user.
-    Tani waxay admin-ka siinaysaa FREE access
-    marka /api/lessons la isticmaalayo.
-  */
-  let users = read('users.json');
-
-  let adminUser = users.find(
-    (u) =>
-      normalizePhone(u.phone) ===
-      normalizePhone(ADMIN_PHONE)
-  );
-
-  if (!adminUser) {
-    adminUser = {
-      id: 'admin-' + Date.now(),
-      phone: ADMIN_PHONE,
-      role: 'admin',
-      expiresAt: null,
-      createdAt: new Date().toISOString()
-    };
-
-    users.push(adminUser);
-  } else {
-    adminUser.role = 'admin';
-  }
-
-  write('users.json', users);
-
-  req.session.userId = adminUser.id;
-
-  res.json({
-    ok: true,
-    role: 'admin',
-    isAdmin: true,
-    paid: true,
-    message: 'Admin login successful. FREE access.'
-  });
 });
-
 
 /* =========================
    ADMIN LOGOUT
@@ -478,52 +570,83 @@ app.post('/api/admin/logout', admin, (req, res) => {
    ADMIN STATS
 ========================= */
 
-app.get('/api/admin/stats', admin, (req, res) => {
-  const users = read('users.json');
-  const payments = read('payments.json');
-  const lessons = read('lessons.json');
+app.get('/api/admin/stats', admin, async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM users) AS users,
+        (SELECT COUNT(*) FROM lessons) AS lessons,
+        (SELECT COUNT(*) FROM payments WHERE status = 'pending') AS pending,
+        (SELECT COUNT(*) FROM payments WHERE status = 'approved') AS approved,
+        (SELECT COUNT(*) FROM payments WHERE status = 'rejected') AS rejected,
+        (
+          SELECT COUNT(*)
+          FROM users
+          WHERE role = 'admin'
+             OR free_access = true
+             OR (expires_at IS NOT NULL AND expires_at > NOW())
+        ) AS active
+    `);
 
-  res.json({
-    users: users.length,
-    lessons: lessons.length,
+    const row = result.rows[0];
 
-    pending: payments.filter(
-      (p) => p.status === 'pending'
-    ).length,
+    res.json({
+      users: Number(row.users),
+      lessons: Number(row.lessons),
+      pending: Number(row.pending),
+      approved: Number(row.approved),
+      rejected: Number(row.rejected),
+      active: Number(row.active)
+    });
+  } catch (error) {
+    console.error('ADMIN STATS DB ERROR:', error);
 
-    approved: payments.filter(
-      (p) => p.status === 'approved'
-    ).length,
-
-    rejected: payments.filter(
-      (p) => p.status === 'rejected'
-    ).length,
-
-    active: users.filter(paid).length,
-
-    paymentMethod: PAYMENT_METHOD,
-    paymentNumber: PAYMENT_NUMBER,
-    paymentName: PAYMENT_NAME,
-    price: PRICE,
-    days: MEMBERSHIP_DAYS
-  });
+    res.status(500).json({
+      error: 'Stats database error'
+    });
+  }
 });
-
 
 /* =========================
    ADMIN PAYMENTS
 ========================= */
 
-app.get('/api/admin/payments', admin, (req, res) => {
-  const payments = read('payments.json');
+app.get('/api/admin/payments', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT *
+       FROM payments
+       ORDER BY created_at DESC`
+    );
 
-  payments.sort((a, b) =>
-    String(b.createdAt).localeCompare(
-      String(a.createdAt)
-    )
-  );
-
-  res.json(payments);
+    res.json(result.rows.map((p) => ({
+      id: p.id,
+      userId: p.user_id,
+      phone: p.phone,
+      amount: Number(p.amount),
+      currency: p.currency,
+      paymentMethod: p.payment_method,
+      paymentNumber: p.payment_number,
+      paymentName: p.payment_name,
+      senderPhone: p.sender_phone,
+      reference: p.reference,
+      status: p.status,
+      createdAt: p.created_at
+        ? new Date(p.created_at).toISOString()
+        : null,
+      approvedAt: p.approved_at
+        ? new Date(p.approved_at).toISOString()
+        : null,
+      rejectedAt: p.rejected_at
+        ? new Date(p.rejected_at).toISOString()
+        : null
+    })));
+  } catch (error) {
+    console.error('ADMIN PAYMENTS DB ERROR:', error);
+    res.status(500).json({
+      error: 'Payments database error'
+    });
+  }
 });
 
 
@@ -535,72 +658,101 @@ app.post(
   '/api/admin/payment/:id/approve',
   admin,
   async (req, res) => {
+    const client = await db.pool.connect();
 
-    let payments = read('payments.json');
+    try {
+      await client.query('BEGIN');
 
-    const payment = payments.find(
-      (p) => p.id === req.params.id
-    );
+      const paymentResult = await client.query(
+        `SELECT *
+         FROM payments
+         WHERE id = $1
+         FOR UPDATE`,
+        [req.params.id]
+      );
 
-    if (!payment) {
-      return res.status(404).json({
-        error: 'Payment not found'
-      });
-    }
+      const payment = paymentResult.rows[0];
 
-    if (payment.status !== 'pending') {
-      return res.json({
+      if (!payment) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          error: 'Payment not found'
+        });
+      }
+
+      if (payment.status !== 'pending') {
+        await client.query('ROLLBACK');
+        return res.json({
+          ok: true,
+          message: 'Payment hore ayaa loo processing gareeyay.'
+        });
+      }
+
+      const userResult = await client.query(
+        `SELECT *
+         FROM users
+         WHERE id = $1
+         FOR UPDATE`,
+        [payment.user_id]
+      );
+
+      const user = userResult.rows[0];
+
+      if (!user) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({
+          error: 'User not found'
+        });
+      }
+
+      let base = new Date();
+
+      if (
+        user.expires_at &&
+        new Date(user.expires_at).getTime() > Date.now()
+      ) {
+        base = new Date(user.expires_at);
+      }
+
+      base.setDate(
+        base.getDate() + MEMBERSHIP_DAYS
+      );
+
+      const expiresAt = base.toISOString();
+
+      await client.query(
+        `UPDATE payments
+         SET status = 'approved',
+             approved_at = NOW()
+         WHERE id = $1`,
+        [payment.id]
+      );
+
+      await client.query(
+        `UPDATE users
+         SET expires_at = $1
+         WHERE id = $2`,
+        [expiresAt, user.id]
+      );
+
+      await client.query('COMMIT');
+
+      res.json({
         ok: true,
-        message: 'Payment hore ayaa loo processing gareeyay.'
+        message: 'Payment approved. 30 maalmood ayaa lagu daray.',
+        expiresAt
       });
-    }
+    } catch (error) {
+      await client.query('ROLLBACK');
 
-    payment.status = 'approved';
-    payment.approvedAt =
-      new Date().toISOString();
+      console.error('APPROVE PAYMENT DB ERROR:', error);
 
-    let users = read('users.json');
-
-    const user = users.find(
-      (u) => u.id === payment.userId
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        error: 'User not found'
+      res.status(500).json({
+        error: 'Payment approval database error'
       });
+    } finally {
+      client.release();
     }
-
-    /*
-      Haddii membership hore wali shaqaynayo,
-      30 maalmood ayaa lagu daraa expiry-ga hore.
-      Haddii uu dhacay, maanta ayaa laga bilaabayaa.
-    */
-    let base;
-
-    if (
-      user.expiresAt &&
-      new Date(user.expiresAt).getTime() > Date.now()
-    ) {
-      base = new Date(user.expiresAt);
-    } else {
-      base = new Date();
-    }
-
-    base.setDate(
-      base.getDate() + MEMBERSHIP_DAYS
-    );
-
-    user.expiresAt = base.toISOString();
-
-    write('users.json', users);
-    write('payments.json', payments);
-
-    res.json({
-      ok: true,
-      message: 'Payment approved. 30 maalmood ayaa lagu daray.',
-      expiresAt: user.expiresAt
-    });
   }
 );
 
@@ -612,140 +764,193 @@ app.post(
 app.post(
   '/api/admin/payment/:id/reject',
   admin,
-  (req, res) => {
+  async (req, res) => {
+    try {
+      const result = await db.query(
+        `UPDATE payments
+         SET status = 'rejected',
+             rejected_at = NOW()
+         WHERE id = $1
+           AND status = 'pending'
+         RETURNING *`,
+        [req.params.id]
+      );
 
-    let payments = read('payments.json');
+      if (result.rows.length === 0) {
+        const check = await db.query(
+          `SELECT id FROM payments WHERE id = $1`,
+          [req.params.id]
+        );
 
-    const payment = payments.find(
-      (p) => p.id === req.params.id
-    );
+        if (check.rows.length === 0) {
+          return res.status(404).json({
+            error: 'Payment not found'
+          });
+        }
 
-    if (!payment) {
-      return res.status(404).json({
-        error: 'Payment not found'
+        return res.json({
+          ok: true,
+          message: 'Payment hore ayaa loo processing gareeyay.'
+        });
+      }
+
+      res.json({
+        ok: true,
+        message: 'Payment rejected.'
+      });
+    } catch (error) {
+      console.error('REJECT PAYMENT DB ERROR:', error);
+
+      res.status(500).json({
+        error: 'Payment rejection database error'
       });
     }
-
-    payment.status = 'rejected';
-    payment.rejectedAt =
-      new Date().toISOString();
-
-    write('payments.json', payments);
-
-    res.json({
-      ok: true,
-      message: 'Payment rejected.'
-    });
   }
 );
-
-
 
 /* =========================
    ADMIN FREE ACCESS
 ========================= */
 
-app.post('/api/admin/user/:id/free', admin, (req, res) => {
-  const users = read('users.json');
+app.post('/api/admin/user/:id/free', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `UPDATE users
+       SET free_access = true
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id]
+    );
 
-  const user = users.find(
-    (u) => u.id === req.params.id
-  );
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'User not found'
+      });
+    }
 
-  if (!user) {
-    return res.status(404).json({
-      error: 'User not found'
+    const user = userFromRow(result.rows[0]);
+
+    res.json({
+      ok: true,
+      message: 'Free access waa la siiyay user-ka.',
+      user
+    });
+  } catch (error) {
+    console.error('FREE ACCESS DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Free access database error'
     });
   }
-
-  user.freeAccess = true;
-
-  write('users.json', users);
-
-  res.json({
-    ok: true,
-    message: 'Free access waa la siiyay user-ka.',
-    user
-  });
 });
 
 
-app.post('/api/admin/user/:id/free/remove', admin, (req, res) => {
-  const users = read('users.json');
+app.post('/api/admin/user/:id/free/remove', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `UPDATE users
+       SET free_access = false
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id]
+    );
 
-  const user = users.find(
-    (u) => u.id === req.params.id
-  );
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'User not found'
+      });
+    }
 
-  if (!user) {
-    return res.status(404).json({
-      error: 'User not found'
+    const user = userFromRow(result.rows[0]);
+
+    res.json({
+      ok: true,
+      message: 'Free access waa laga qaaday user-ka.',
+      user
+    });
+  } catch (error) {
+    console.error('REMOVE FREE ACCESS DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Remove free access database error'
     });
   }
-
-  user.freeAccess = false;
-
-  write('users.json', users);
-
-  res.json({
-    ok: true,
-    message: 'Free access waa laga qaaday user-ka.',
-    user
-  });
 });
-
-
 
 /* =========================
    REVOKE PAID ACCESS
 ========================= */
 
-app.post('/api/admin/user/:id/revoke-paid', admin, (req, res) => {
-  const users = read('users.json');
+app.post('/api/admin/user/:id/revoke-paid', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `UPDATE users
+       SET expires_at = NULL
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id]
+    );
 
-  const user = users.find(
-    (u) => u.id === req.params.id
-  );
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'User not found'
+      });
+    }
 
-  if (!user) {
-    return res.status(404).json({
-      error: 'User not found'
+    const user = userFromRow(result.rows[0]);
+
+    if (user.role === 'admin') {
+      return res.status(400).json({
+        error: 'Admin access lama laga qaadi karo'
+      });
+    }
+
+    res.json({
+      ok: true,
+      message: 'Paid access waa laga qaaday user-ka.',
+      user
+    });
+  } catch (error) {
+    console.error('REVOKE PAID DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Revoke paid database error'
     });
   }
+});
 
-  if (user.role === 'admin') {
-    return res.status(400).json({
-      error: 'Admin access lama laga qaadi karo'
+
+app.get('/api/admin/users', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT *
+       FROM users
+       ORDER BY created_at DESC`
+    );
+
+    res.json(
+      result.rows.map((row) => {
+        const user = userFromRow(row);
+
+        return {
+          id: user.id,
+          phone: user.phone,
+          role: user.role || 'user',
+          freeAccess: user.freeAccess === true,
+          expiresAt: user.expiresAt || null,
+          createdAt: user.createdAt || null,
+          paid: paid(user)
+        };
+      })
+    );
+  } catch (error) {
+    console.error('ADMIN USERS DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Users database error'
     });
   }
-
-  user.expiresAt = null;
-
-  write('users.json', users);
-
-  res.json({
-    ok: true,
-    message: 'Paid access waa laga qaaday user-ka.',
-    user
-  });
 });
-
-app.get('/api/admin/users', admin, (req, res) => {
-  const users = read('users.json');
-
-  res.json(
-    users.map((u) => ({
-      id: u.id,
-      phone: u.phone,
-      role: u.role || 'user',
-      freeAccess: u.freeAccess === true,
-      expiresAt: u.expiresAt || null,
-      createdAt: u.createdAt || null,
-      paid: paid(u)
-    }))
-  );
-});
-
 
 /* =========================
    AI AUTO SUBTITLES
@@ -901,8 +1106,35 @@ app.post(
    ADMIN LESSONS
 ========================= */
 
-app.get('/api/admin/lessons', admin, (req, res) => {
-  res.json(read('lessons.json'));
+app.get('/api/admin/lessons', admin, async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT *
+      FROM lessons
+      ORDER BY created_at DESC
+    `);
+
+    res.json(
+      result.rows.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        description: lesson.description || '',
+        video: lesson.video_url || lesson.video || '',
+        videoUrl: lesson.video_url || '',
+        videoPublicId: lesson.video_public_id || '',
+        lines: Array.isArray(lesson.lines) ? lesson.lines : [],
+        createdAt: lesson.created_at
+          ? new Date(lesson.created_at).toISOString()
+          : null
+      }))
+    );
+  } catch (error) {
+    console.error('ADMIN LESSONS DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Lessons database error'
+    });
+  }
 });
 
 
@@ -914,61 +1146,95 @@ app.post(
   '/api/admin/lesson',
   admin,
   async (req, res) => {
+    try {
+      const {
+        title,
+        description,
+        videoUrl,
+        videoPublicId,
+        lines
+      } = req.body;
 
-    const { title, description, videoUrl, videoPublicId, lines } = req.body;
+      if (!videoUrl || !videoPublicId) {
+        return res.status(400).json({
+          error: 'Video-ga Cloudinary lama helin'
+        });
+      }
 
-    if (!videoUrl || !videoPublicId) {
-      return res.status(400).json({
-        error: 'Video-ga Cloudinary lama helin'
-      });
-    }
+      if (!title || !String(title).trim()) {
+        return res.status(400).json({
+          error: 'Magaca casharka geli'
+        });
+      }
 
-    if (!title || !String(title).trim()) {
-      return res.status(400).json({
-        error: 'Magaca casharka geli'
-      });
-    }
+      if (!Array.isArray(lines) || !lines.length) {
+        return res.status(400).json({
+          error: 'Ku dar ugu yaraan hal subtitle'
+        });
+      }
 
-    if (!Array.isArray(lines) || !lines.length) {
-      return res.status(400).json({
-        error: 'Ku dar ugu yaraan hal subtitle'
-      });
-    }
+      const id = Date.now().toString();
+      const cleanTitle = String(title).trim();
+      const cleanDescription = String(description || '').trim();
 
-    const lessons = read('lessons.json');
-
-    const item = {
-      id: Date.now().toString(),
-
-      title: String(title).trim(),
-
-      description: String(
-        description || ''
-      ).trim(),
-
-      video: videoPublicId,
-      videoUrl: String(videoUrl),
-      videoPublicId: String(videoPublicId),
-
-      lines: lines.map((x) => ({
+      const cleanLines = lines.map((x) => ({
         start: Number(x.start),
         end: Number(x.end),
         en: String(x.en || ''),
         so: String(x.so || '')
-      })),
+      }));
 
-      createdAt: new Date().toISOString()
-    };
+      const result = await db.query(
+        `INSERT INTO lessons
+         (
+           id,
+           title,
+           description,
+           video,
+           video_url,
+           video_public_id,
+           lines
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+         RETURNING *`,
+        [
+          id,
+          cleanTitle,
+          cleanDescription,
+          String(videoPublicId),
+          String(videoUrl),
+          String(videoPublicId),
+          JSON.stringify(cleanLines)
+        ]
+      );
 
-    lessons.unshift(item);
+      const row = result.rows[0];
 
-    write('lessons.json', lessons);
+      const item = {
+        id: row.id,
+        title: row.title,
+        description: row.description || '',
+        video: row.video_url || row.video || '',
+        videoUrl: row.video_url || '',
+        videoPublicId: row.video_public_id || '',
+        lines: Array.isArray(row.lines) ? row.lines : [],
+        createdAt: row.created_at
+          ? new Date(row.created_at).toISOString()
+          : null
+      };
 
-    res.json({
-      ok: true,
-      item,
-      message: '✅ Casharka waa la geliyey.'
-    });
+      res.json({
+        ok: true,
+        item,
+        message: '✅ Casharka waa la geliyey.'
+      });
+    } catch (error) {
+      console.error('ADD LESSON DB ERROR:', error);
+
+      res.status(500).json({
+        error: 'Lesson database error'
+      });
+    }
   }
 );
 
@@ -981,46 +1247,62 @@ app.delete(
   '/api/admin/lesson/:id',
   admin,
   async (req, res) => {
+    try {
+      const result = await db.query(
+        `SELECT *
+         FROM lessons
+         WHERE id = $1
+         LIMIT 1`,
+        [req.params.id]
+      );
 
-    let lessons = read('lessons.json');
+      const lesson = result.rows[0];
 
-    const index = lessons.findIndex(
-      (x) => x.id === req.params.id
-    );
+      if (!lesson) {
+        return res.status(404).json({
+          error: 'Lesson not found'
+        });
+      }
 
-    if (index < 0) {
-      return res.status(404).json({
-        error: 'Lesson not found'
+      // Delete video from Cloudinary
+      if (lesson.video_public_id) {
+        try {
+          await cloudinary.uploader.destroy(
+            lesson.video_public_id,
+            { resource_type: 'video' }
+          );
+        } catch (e) {
+          console.error('CLOUDINARY DELETE ERROR:', e);
+        }
+      }
+
+      // Delete old local video if it exists
+      const file = path.join(UP, lesson.video || '');
+
+      if (fs.existsSync(file)) {
+        fs.unlinkSync(file);
+      }
+
+      await db.query(
+        `DELETE FROM lessons
+         WHERE id = $1`,
+        [req.params.id]
+      );
+
+      res.json({
+        ok: true,
+        message: 'Casharka waa la tirtiray.'
+      });
+    } catch (error) {
+      console.error('DELETE LESSON DB ERROR:', error);
+
+      res.status(500).json({
+        error: 'Lesson delete database error'
       });
     }
-
-    const lesson = lessons[index];
-
-    // Delete video from Cloudinary
-    if (lesson.videoPublicId) {
-      try {
-        await cloudinary.uploader.destroy(
-          lesson.videoPublicId,
-          { resource_type: 'video' }
-        );
-      } catch (e) {
-        console.error('CLOUDINARY DELETE ERROR:', e);
-      }
-    }
-
-    // Delete old local video if it exists
-    const file = path.join(UP, lesson.video || '');
-
-    if (fs.existsSync(file)) {
-      fs.unlinkSync(file);
-    }
-
-    lessons.splice(index, 1);
-    write('lessons.json', lessons);
-
-    res.json({ ok: true });
   }
 );
+
 
 /* =========================
    EDIT LESSON
@@ -1029,64 +1311,98 @@ app.delete(
 app.put(
   '/api/admin/lesson/:id',
   admin,
-  (req, res) => {
-
-    const lessons = read('lessons.json');
-
-    const lesson = lessons.find(
-      (x) => x.id === req.params.id
-    );
-
-    if (!lesson) {
-      return res.status(404).json({
-        error: 'Lesson not found'
-      });
-    }
-
-    let lines;
-
+  async (req, res) => {
     try {
-      lines = JSON.parse(
-        req.body.lines || '[]'
+      const existing = await db.query(
+        `SELECT *
+         FROM lessons
+         WHERE id = $1
+         LIMIT 1`,
+        [req.params.id]
       );
-    } catch (e) {
-      return res.status(400).json({
-        error: 'Subtitles JSON sax ma aha'
+
+      const lesson = existing.rows[0];
+
+      if (!lesson) {
+        return res.status(404).json({
+          error: 'Lesson not found'
+        });
+      }
+
+      let lines;
+
+      try {
+        lines = JSON.parse(
+          req.body.lines || '[]'
+        );
+      } catch (e) {
+        return res.status(400).json({
+          error: 'Subtitles JSON sax ma aha'
+        });
+      }
+
+      if (!Array.isArray(lines) || !lines.length) {
+        return res.status(400).json({
+          error: 'Ku dar ugu yaraan hal subtitle'
+        });
+      }
+
+      const title = String(
+        req.body.title || lesson.title
+      ).trim();
+
+      const description = String(
+        req.body.description || ''
+      ).trim();
+
+      const cleanLines = lines.map((x) => ({
+        start: Number(x.start),
+        end: Number(x.end),
+        en: String(x.en || ''),
+        so: String(x.so || '')
+      }));
+
+      const result = await db.query(
+        `UPDATE lessons
+         SET title = $1,
+             description = $2,
+             lines = $3::jsonb
+         WHERE id = $4
+         RETURNING *`,
+        [
+          title,
+          description,
+          JSON.stringify(cleanLines),
+          req.params.id
+        ]
+      );
+
+      const row = result.rows[0];
+
+      const item = {
+        id: row.id,
+        title: row.title,
+        description: row.description || '',
+        video: row.video_url || row.video || '',
+        videoUrl: row.video_url || '',
+        videoPublicId: row.video_public_id || '',
+        lines: Array.isArray(row.lines) ? row.lines : [],
+        createdAt: row.created_at
+          ? new Date(row.created_at).toISOString()
+          : null
+      };
+
+      res.json({
+        ok: true,
+        item
+      });
+    } catch (error) {
+      console.error('EDIT LESSON DB ERROR:', error);
+
+      res.status(500).json({
+        error: 'Lesson update database error'
       });
     }
-
-    if (
-      !Array.isArray(lines) ||
-      !lines.length
-    ) {
-      return res.status(400).json({
-        error: 'Ku dar ugu yaraan hal subtitle'
-      });
-    }
-
-    lesson.title = String(
-      req.body.title || lesson.title
-    ).trim();
-
-    lesson.description = String(
-      req.body.description || ''
-    ).trim();
-
-    lesson.lines = lines.map((x) => ({
-      start: Number(x.start),
-      end: Number(x.end),
-      en: String(x.en || ''),
-      so: String(x.so || '')
-    }));
-
-    lesson.updatedAt = new Date().toISOString();
-
-    write('lessons.json', lessons);
-
-    res.json({
-      ok: true,
-      item: lesson
-    });
   }
 );
 
