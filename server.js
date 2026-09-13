@@ -658,48 +658,39 @@ app.post(
   '/api/admin/payment/:id/approve',
   admin,
   async (req, res) => {
-    const client = await db.pool.connect();
-
     try {
-      await client.query('BEGIN');
-
-      const paymentResult = await client.query(
+      const paymentResult = await db.query(
         `SELECT *
          FROM payments
-         WHERE id = $1
-         FOR UPDATE`,
+         WHERE id = $1`,
         [req.params.id]
       );
 
       const payment = paymentResult.rows[0];
 
       if (!payment) {
-        await client.query('ROLLBACK');
         return res.status(404).json({
           error: 'Payment not found'
         });
       }
 
       if (payment.status !== 'pending') {
-        await client.query('ROLLBACK');
         return res.json({
           ok: true,
           message: 'Payment hore ayaa loo processing gareeyay.'
         });
       }
 
-      const userResult = await client.query(
+      const userResult = await db.query(
         `SELECT *
          FROM users
-         WHERE id = $1
-         FOR UPDATE`,
+         WHERE id = $1`,
         [payment.user_id]
       );
 
       const user = userResult.rows[0];
 
       if (!user) {
-        await client.query('ROLLBACK');
         return res.status(404).json({
           error: 'User not found'
         });
@@ -714,13 +705,11 @@ app.post(
         base = new Date(user.expires_at);
       }
 
-      base.setDate(
-        base.getDate() + MEMBERSHIP_DAYS
-      );
+      base.setDate(base.getDate() + MEMBERSHIP_DAYS);
 
       const expiresAt = base.toISOString();
 
-      await client.query(
+      await db.query(
         `UPDATE payments
          SET status = 'approved',
              approved_at = NOW()
@@ -728,14 +717,12 @@ app.post(
         [payment.id]
       );
 
-      await client.query(
+      await db.query(
         `UPDATE users
          SET expires_at = $1
          WHERE id = $2`,
         [expiresAt, user.id]
       );
-
-      await client.query('COMMIT');
 
       res.json({
         ok: true,
@@ -743,15 +730,11 @@ app.post(
         expiresAt
       });
     } catch (error) {
-      await client.query('ROLLBACK');
-
       console.error('APPROVE PAYMENT DB ERROR:', error);
 
       res.status(500).json({
         error: 'Payment approval database error'
       });
-    } finally {
-      client.release();
     }
   }
 );
@@ -1426,6 +1409,20 @@ app.get('*', (req, res) => {
       'index.html'
     )
   );
+});
+
+
+
+// Google Search Console sitemap
+app.get('/sitemap.xml', (req, res) => {
+  const baseUrl = 'https://englishsomali.abasthan.app';
+
+  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>${baseUrl}/</loc>
+  </url>
+</urlset>`);
 });
 
 

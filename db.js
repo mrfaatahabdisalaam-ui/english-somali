@@ -1,25 +1,21 @@
 require('dotenv').config();
-const { Pool } = require('pg');
+const { neon } = require('@neondatabase/serverless');
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL lama helin');
 }
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+const sql = neon(process.env.DATABASE_URL);
 
 async function query(text, params = []) {
-  return pool.query(text, params);
+  const rows = await sql.query(text, params); return { rows };
 }
 
 async function close() {
-  await pool.end();
+  // Neon serverless does not require a persistent pool to close.
 }
 
 module.exports = {
-  pool,
   query,
   close
 };
