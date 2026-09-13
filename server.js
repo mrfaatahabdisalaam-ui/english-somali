@@ -46,8 +46,10 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD =
   process.env.ADMIN_PASSWORD || 'ceadce18c5d8b4295898c8db3fe87decaaa0ccf967dd3df798134099b0c571ae';
 
-const ADMIN_PHONE =
-  process.env.ADMIN_PHONE || '616785024';
+const ADMIN_PHONE = '';
+
+
+const ADMIN_ID = 'ADMIN-001';
 
 const SESSION_SECRET =
   process.env.SESSION_SECRET || 'change-this-secret-in-production';
@@ -133,7 +135,7 @@ function normalizePhone(phone) {
 }
 
 function isAdminPhone(phone) {
-  return normalizePhone(phone) === normalizePhone(ADMIN_PHONE);
+  return false;
 }
 
 async function getUserById(id) {
@@ -483,40 +485,31 @@ app.get('/api/lessons', auth, async (req, res) => {
 
 app.post('/api/admin/login', async (req, res) => {
   try {
-    const password = String(req.body.password || '');
+    const adminId = String(req.body.adminId || '').trim();
 
-    const passwordHash = crypto
-      .createHash('sha256')
-      .update(password)
-      .digest('hex');
-
-    if (passwordHash !== ADMIN_PASSWORD) {
+    if (adminId !== ADMIN_ID) {
       return res.status(401).json({
-        error: 'Password khalad ah'
+        error: 'Admin ID khalad ah'
       });
     }
-
-    req.session.admin = true;
 
     const existing = await db.query(
       `SELECT *
        FROM users
-       WHERE phone = $1
+       WHERE id = $1
        LIMIT 1`,
-      [ADMIN_PHONE]
+      [ADMIN_ID]
     );
 
     let row;
 
     if (existing.rows.length === 0) {
-      const id = 'admin-' + Date.now();
-
       const inserted = await db.query(
         `INSERT INTO users
          (id, phone, role, free_access, expires_at)
          VALUES ($1, $2, 'admin', true, NULL)
          RETURNING *`,
-        [id, ADMIN_PHONE]
+        [ADMIN_ID, 'ADMIN-001']
       );
 
       row = inserted.rows[0];
@@ -525,9 +518,9 @@ app.post('/api/admin/login', async (req, res) => {
         `UPDATE users
          SET role = 'admin',
              free_access = true
-         WHERE phone = $1
+         WHERE id = $1
          RETURNING *`,
-        [ADMIN_PHONE]
+        [ADMIN_ID]
       );
 
       row = updated.rows[0];
@@ -535,6 +528,7 @@ app.post('/api/admin/login', async (req, res) => {
 
     const adminUser = userFromRow(row);
 
+    req.session.admin = true;
     req.session.userId = adminUser.id;
 
     res.json({
@@ -542,13 +536,13 @@ app.post('/api/admin/login', async (req, res) => {
       role: 'admin',
       isAdmin: true,
       paid: true,
-      message: 'Admin login successful. FREE access.'
+      expiresAt: null
     });
   } catch (error) {
     console.error('ADMIN LOGIN DB ERROR:', error);
 
     res.status(500).json({
-      error: 'Admin database error'
+      error: 'Admin login database error'
     });
   }
 });
@@ -1448,7 +1442,7 @@ app.listen(PORT, '0.0.0.0', () => {
   );
 
   console.log(
-    `Admin phone: ${ADMIN_PHONE}`
+    `Admin ID: ${ADMIN_ID}`
   );
 });
 

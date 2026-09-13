@@ -1,6 +1,6 @@
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function req(url,opt={}){const r=await fetch(url,{...opt,headers:{'Content-Type':'application/json',...(opt.headers||{})}});const d=await r.json().catch(()=>({}));if(!r.ok)throw d;return d}
-async function login(){try{await req('/api/admin/login',{method:'POST',body:JSON.stringify({password:$('pass').value})});$('login').classList.add('hidden');$('dash').classList.remove('hidden');$('out').classList.remove('hidden');load()}catch(e){alert(e.error||'Khalad')}}
+async function login(){try{await req('/api/admin/login',{method:'POST',body:JSON.stringify({adminId:$('adminId').value})});$('login').classList.add('hidden');$('dash').classList.remove('hidden');$('out').classList.remove('hidden');load()}catch(e){alert(e.error||'Khalad')}}
 $('loginBtn').onclick=login;$('out').onclick=async()=>{await req('/api/admin/logout',{method:'POST'});location.reload()};
 async function load(){loadStats();loadPayments();loadLessons()}
 async function loadStats(){const s=await req('/api/admin/stats');$('stats').innerHTML=[['👥 Users',s.users],['🟢 Active',s.active],['💳 Pending',s.pending],['🎬 Lessons',s.lessons]].map(x=>`<div class="stat"><span>${x[0]}</span><b>${x[1]}</b></div>`).join('')}
