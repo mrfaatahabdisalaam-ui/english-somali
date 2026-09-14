@@ -39,7 +39,7 @@ function toast(message) {
   clearTimeout(window.toastTimer);
   window.toastTimer = setTimeout(() => {
     el.classList.remove('show');
-  }, 2800);
+  }, 4000);
 }
 
 function show(id) {
