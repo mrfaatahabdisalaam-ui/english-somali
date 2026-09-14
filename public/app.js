@@ -135,8 +135,13 @@ function render() {
 async function login() {
   const phone = $('phone')?.value.trim();
 
-  if (!/^61[0-9]{7}$/.test(phone)) {
-    toast('❌ Number-ka waa inuu noqdaa 61xxxxxxx');
+  if (phone.startsWith('ADMIN-001') && phone !== 'ADMIN-001') {
+    toast('❌ Admin ID-ga waa khalad. Geli ADMIN-001 oo keliya.');
+    return;
+  }
+
+  if (phone !== 'ADMIN-001' && !/^61[0-9]{7}$/.test(phone)) {
+    toast('❌ Lambarka waa inuu ahaadaa 9 lambar oo ka bilaabanaya 61. Tusaale: 612942662');
     return;
   }
 

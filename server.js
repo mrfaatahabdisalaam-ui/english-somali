@@ -226,21 +226,78 @@ app.get('/api/config', (req, res) => {
 
 app.post('/api/login', async (req, res) => {
   try {
-    const phone = normalizePhone(req.body.phone);
+    const loginValue = String(req.body.phone || '').trim();
 
-    if (!/^61[0-9]{7}$/.test(phone)) {
-      return res.status(400).json({
-        error: 'Number-ka waa inuu noqdaa 61xxxxxxx oo 9 digit ah'
+    // ADMIN LOGIN - ID sax ah oo keliya
+    if (loginValue === ADMIN_ID) {
+      const result = await db.query(
+        `SELECT * FROM users WHERE id = $1 LIMIT 1`,
+        [ADMIN_ID]
+      );
+
+      let row = result.rows[0];
+
+      if (!row) {
+        const inserted = await db.query(
+          `INSERT INTO users
+            (id, phone, role, free_access, expires_at)
+           VALUES ($1, $2, 'admin', true, null)
+           RETURNING *`,
+          [ADMIN_ID, ADMIN_ID]
+        );
+
+        row = inserted.rows[0];
+      } else if (row.role !== 'admin' || !row.free_access) {
+        const updated = await db.query(
+          `UPDATE users
+           SET role = 'admin', free_access = true, expires_at = null
+           WHERE id = $1
+           RETURNING *`,
+          [ADMIN_ID]
+        );
+
+        row = updated.rows[0];
+      }
+
+      const user = userFromRow(row);
+      req.session.userId = user.id;
+
+      return res.json({
+        phone: user.phone,
+        role: 'admin',
+        isAdmin: true,
+        paid: true,
+        expiresAt: null
       });
     }
 
-    const result = await db.query(
-      `SELECT * FROM users`
+    // USER LOGIN - 61 + 7 digits = 9 digits total
+    if (!/^61[0-9]{7}$/.test(loginValue)) {
+      return res.status(400).json({
+        error: '❌ Lambarka waa inuu ahaadaa 9 lambar oo ka bilaabanaya 61. Tusaale: 612942662'
+      });
+    }
+
+    const phone = normalizePhone(loginValue);
+
+    // Haddii number-kan hore user u jiray, user ahaan u daa.
+    await db.query(
+      `UPDATE users
+       SET role = 'user', free_access = false
+       WHERE phone = $1
+         AND id <> $2`,
+      [phone, ADMIN_ID]
     );
 
-    let row = result.rows.find(
-      (u) => normalizePhone(u.phone) === phone
+    const result = await db.query(
+      `SELECT * FROM users
+       WHERE phone = $1
+         AND id <> $2
+       LIMIT 1`,
+      [phone, ADMIN_ID]
     );
+
+    let row = result.rows[0];
 
     if (!row) {
       const id = Date.now().toString();
@@ -248,53 +305,34 @@ app.post('/api/login', async (req, res) => {
       const inserted = await db.query(
         `INSERT INTO users
           (id, phone, role, free_access, expires_at)
-         VALUES ($1, $2, $3, $4, $5)
+         VALUES ($1, $2, 'user', false, null)
          RETURNING *`,
-        [
-          id,
-          phone,
-          isAdminPhone(phone) ? 'admin' : 'user',
-          false,
-          null
-        ]
+        [id, phone]
       );
 
       row = inserted.rows[0];
-    } else if (isAdminPhone(phone) && row.role !== 'admin') {
-      const updated = await db.query(
-        `UPDATE users
-         SET role = 'admin'
-         WHERE id = $1
-         RETURNING *`,
-        [row.id]
-      );
-
-      row = updated.rows[0];
     }
 
     const user = userFromRow(row);
 
     req.session.userId = user.id;
 
-    res.json({
+    return res.json({
       phone: user.phone,
-      role: user.role,
-      isAdmin: user.role === 'admin',
+      role: 'user',
+      isAdmin: false,
       paid: paid(user),
       expiresAt: user.expiresAt
     });
+
   } catch (error) {
     console.error('LOGIN DB ERROR:', error);
 
-    res.status(500).json({
-      error: 'Login database error'
+    return res.status(500).json({
+      error: '❌ Login-ka ayaa cilad galay. Fadlan mar kale isku day.'
     });
   }
 });
-
-/* =========================
-   LOGOUT
-========================= */
 
 app.post('/api/logout', (req, res) => {
   req.session.destroy(() => {
