@@ -1,29 +1,29 @@
 require('dotenv').config();
-const { Pool } = require('@neondatabase/serverless');
+const { neon } = require('@neondatabase/serverless');
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL lama helin');
 }
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 5,
-  idleTimeoutMillis: 60000
-});
+const sql = neon(process.env.DATABASE_URL);
 
 async function query(text, params = []) {
   let lastError;
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 4; attempt++) {
     try {
-      const result = await pool.query(text, params);
-      return { rows: result.rows };
+      const rows = await sql.query(text, params);
+      return { rows };
     } catch (error) {
       lastError = error;
-      console.error(`DB QUERY FAILED (${attempt}/3):`, error.message);
 
-      if (attempt < 3) {
-        await new Promise(resolve => setTimeout(resolve, attempt * 1500));
+      console.error(
+        `DB QUERY FAILED (${attempt}/4):`,
+        error?.message || error
+      );
+
+      if (attempt < 4) {
+        await new Promise(resolve => setTimeout(resolve, attempt * 2000));
       }
     }
   }
@@ -31,8 +31,9 @@ async function query(text, params = []) {
   throw lastError;
 }
 
-async function close() {
-  await pool.end();
-}
+async function close() {}
 
-module.exports = { query, close };
+module.exports = {
+  query,
+  close
+};
