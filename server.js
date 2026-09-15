@@ -1429,6 +1429,31 @@ app.get('/api/cloudinary-config', admin, (req, res) => {
 });
 
 
+
+/* =========================
+   GLOBAL ERROR PROTECTION
+========================= */
+
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED PROMISE REJECTION:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('UNCAUGHT EXCEPTION:', error);
+});
+
+app.use((err, req, res, next) => {
+  console.error('GLOBAL EXPRESS ERROR:', err);
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  res.status(500).json({
+    error: 'Server error. Fadlan mar kale isku day.'
+  });
+});
+
 /* =========================
    FRONTEND FALLBACK
 ========================= */

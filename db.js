@@ -10,7 +10,7 @@ const sql = neon(process.env.DATABASE_URL);
 async function query(text, params = []) {
   let lastError;
 
-  for (let attempt = 1; attempt <= 4; attempt++) {
+  for (let attempt = 1; attempt <= 6; attempt++) {
     try {
       const rows = await sql.query(text, params);
       return { rows };
@@ -18,12 +18,13 @@ async function query(text, params = []) {
       lastError = error;
 
       console.error(
-        `DB QUERY FAILED (${attempt}/4):`,
+        `DB QUERY FAILED (${attempt}/6):`,
         error?.message || error
       );
 
-      if (attempt < 4) {
-        await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+      if (attempt < 6) {
+        const delay = Math.min(attempt * 3000, 15000);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   }
