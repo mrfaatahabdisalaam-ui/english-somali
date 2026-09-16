@@ -13,6 +13,48 @@ const { db, userFromRow } = require('./db-models');
 
 const execFileAsync = util.promisify(execFile);
 
+/* =========================
+   PIN SECURITY
+========================= */
+
+function hashPin(pin) {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16).toString('hex');
+
+    crypto.scrypt(pin, salt, 64, (error, derivedKey) => {
+      if (error) return reject(error);
+
+      resolve(`${salt}:${derivedKey.toString('hex')}`);
+    });
+  });
+}
+
+function verifyPin(pin, storedHash) {
+  return new Promise((resolve, reject) => {
+    if (!storedHash || !storedHash.includes(':')) {
+      return resolve(false);
+    }
+
+    const [salt, keyHex] = storedHash.split(':');
+
+    crypto.scrypt(pin, salt, 64, (error, derivedKey) => {
+      if (error) return reject(error);
+
+      const storedKey = Buffer.from(keyHex, 'hex');
+
+      if (storedKey.length !== derivedKey.length) {
+        return resolve(false);
+      }
+
+      resolve(crypto.timingSafeEqual(storedKey, derivedKey));
+    });
+  });
+}
+
+function validPin(pin) {
+  return /^[0-9]{4,6}$/.test(String(pin || ''));
+}
+
 async function uploadVideoToCloudinary(filePath) {
   return await cloudinary.uploader.upload(filePath, {
     resource_type: 'video',
@@ -271,7 +313,9 @@ app.post('/api/login', async (req, res) => {
       });
     }
 
-    // USER LOGIN - 61 + 7 digits = 9 digits total
+    // USER LOGIN - phone + PIN
+    const pin = String(req.body.pin || '').trim();
+
     if (!/^61[0-9]{7}$/.test(loginValue)) {
       return res.status(400).json({
         error: '❌ Lambarka waa inuu ahaadaa 9 lambar oo ka bilaabanaya 61. Tusaale: 612942662'
@@ -280,17 +324,15 @@ app.post('/api/login', async (req, res) => {
 
     const phone = normalizePhone(loginValue);
 
-    // Haddii number-kan hore user u jiray, user ahaan u daa.
-    await db.query(
-      `UPDATE users
-       SET role = 'user', free_access = false
-       WHERE phone = $1
-         AND id <> $2`,
-      [phone, ADMIN_ID]
-    );
+    if (pin && !validPin(pin)) {
+      return res.status(400).json({
+        error: '❌ PIN-ku waa inuu ahaadaa 4 ilaa 6 lambar.'
+      });
+    }
 
     const result = await db.query(
-      `SELECT * FROM users
+      `SELECT *
+       FROM users
        WHERE phone = $1
          AND id <> $2
        LIMIT 1`,
@@ -299,18 +341,62 @@ app.post('/api/login', async (req, res) => {
 
     let row = result.rows[0];
 
+    // Account cusub
     if (!row) {
+      if (!pin) {
+        return res.status(400).json({
+          error: '🔐 Account cusub ayaad tahay. Samee PIN 4 ilaa 6 lambar ah.'
+        });
+      }
+
       const id = Date.now().toString();
+      const pinHash = await hashPin(pin);
 
       const inserted = await db.query(
         `INSERT INTO users
-          (id, phone, role, free_access, expires_at)
-         VALUES ($1, $2, 'user', false, null)
+          (id, phone, role, free_access, expires_at, pin_hash)
+         VALUES ($1, $2, 'user', false, null, $3)
          RETURNING *`,
-        [id, phone]
+        [id, phone, pinHash]
       );
 
       row = inserted.rows[0];
+    } else {
+      // Account hore oo aan weli PIN lahayn
+      if (!row.pin_hash) {
+        if (!pin) {
+          return res.status(400).json({
+            error: '🔐 Account-kan PIN ma laha. Geli PIN cusub oo 4 ilaa 6 lambar ah.'
+          });
+        }
+
+        const pinHash = await hashPin(pin);
+
+        const updated = await db.query(
+          `UPDATE users
+           SET pin_hash = $1
+           WHERE id = $2
+           RETURNING *`,
+          [pinHash, row.id]
+        );
+
+        row = updated.rows[0];
+      } else {
+        // Account hore oo PIN leh
+        if (!pin) {
+          return res.status(401).json({
+            error: '🔐 Geli PIN-kaaga si aad u gasho account-ka.'
+          });
+        }
+
+        const correctPin = await verifyPin(pin, row.pin_hash);
+
+        if (!correctPin) {
+          return res.status(401).json({
+            error: '❌ PIN-ka waa khalad.'
+          });
+        }
+      }
     }
 
     const user = userFromRow(row);

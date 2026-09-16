@@ -134,6 +134,7 @@ function render() {
 
 async function login() {
   const phone = $('phone')?.value.trim();
+  const pin = $('pin')?.value.trim();
 
   if (phone.startsWith('ADMIN-001') && phone !== 'ADMIN-001') {
     toast('❌ Admin ID-ga waa khalad. Geli ADMIN-001 oo keliya.');
@@ -154,7 +155,7 @@ async function login() {
 
     me = await api('/api/login', {
       method: 'POST',
-      body: JSON.stringify({ phone })
+      body: JSON.stringify({ phone, pin })
     });
 
     render();
