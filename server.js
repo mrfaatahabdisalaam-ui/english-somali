@@ -401,6 +401,13 @@ app.post('/api/login', async (req, res) => {
 
     const user = userFromRow(row);
 
+    // ACCOUNT LOCK CHECK
+    if (user.locked === true) {
+      return res.status(403).json({
+        error: '🔒 Account-kan waa xiran yahay. Fadlan la xiriir Admin-ka.'
+      });
+    }
+
     req.session.userId = user.id;
 
     return res.json({
@@ -979,6 +986,192 @@ app.post('/api/admin/user/:id/free/remove', admin, async (req, res) => {
 });
 
 /* =========================
+   ADD 30 DAYS
+========================= */
+
+app.post('/api/admin/user/:id/add-30-days', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT *
+       FROM users
+       WHERE id = $1 AND role <> 'admin'`,
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'User not found ama Admin looma dari karo'
+      });
+    }
+
+    const user = result.rows[0];
+
+    let base = new Date();
+
+    if (
+      user.expires_at &&
+      new Date(user.expires_at).getTime() > Date.now()
+    ) {
+      base = new Date(user.expires_at);
+    }
+
+    base.setDate(base.getDate() + MEMBERSHIP_DAYS);
+
+    const expiresAt = base.toISOString();
+
+    await db.query(
+      `UPDATE users
+       SET expires_at = $1
+       WHERE id = $2`,
+      [expiresAt, user.id]
+    );
+
+    res.json({
+      ok: true,
+      message: '➕ 30 maalmood ayaa lagu daray.',
+      expiresAt
+    });
+  } catch (error) {
+    console.error('ADD 30 DAYS DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Add 30 days database error'
+    });
+  }
+});
+
+/* =========================
+   SET ACTIVE / EXPIRED
+========================= */
+
+app.post('/api/admin/user/:id/activate', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `UPDATE users
+       SET expires_at = $1
+       WHERE id = $2 AND role <> 'admin'
+       RETURNING *`,
+      [
+        new Date(Date.now() + MEMBERSHIP_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+        req.params.id
+      ]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'User not found ama Admin lama activate-gareyn karo'
+      });
+    }
+
+    res.json({
+      ok: true,
+      message: '🟢 User-ka waa Active.',
+      user: userFromRow(result.rows[0])
+    });
+  } catch (error) {
+    console.error('ACTIVATE USER DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Activate user database error'
+    });
+  }
+});
+
+app.post('/api/admin/user/:id/expire', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `UPDATE users
+       SET expires_at = NULL
+       WHERE id = $1 AND role <> 'admin'
+       RETURNING *`,
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'User not found ama Admin lama expire-gareyn karo'
+      });
+    }
+
+    res.json({
+      ok: true,
+      message: '🔴 User-ka waa Expired.',
+      user: userFromRow(result.rows[0])
+    });
+  } catch (error) {
+    console.error('EXPIRE USER DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Expire user database error'
+    });
+  }
+});
+
+/* =========================
+   LOCK / UNLOCK USER
+========================= */
+
+app.post('/api/admin/user/:id/lock', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `UPDATE users
+       SET locked = true
+       WHERE id = $1 AND role <> 'admin'
+       RETURNING *`,
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'User not found ama Admin lama xiri karo'
+      });
+    }
+
+    res.json({
+      ok: true,
+      message: '🔒 Account-ka waa la xiray.',
+      user: userFromRow(result.rows[0])
+    });
+  } catch (error) {
+    console.error('LOCK USER DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Lock account database error'
+    });
+  }
+});
+
+app.post('/api/admin/user/:id/unlock', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `UPDATE users
+       SET locked = false
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'User not found'
+      });
+    }
+
+    res.json({
+      ok: true,
+      message: '🔓 Account-ka waa la furay.',
+      user: userFromRow(result.rows[0])
+    });
+  } catch (error) {
+    console.error('UNLOCK USER DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Unlock account database error'
+    });
+  }
+});
+
+/* =========================
    REVOKE PAID ACCESS
 ========================= */
 
@@ -1038,6 +1231,7 @@ app.get('/api/admin/users', admin, async (req, res) => {
           phone: user.phone,
           role: user.role || 'user',
           freeAccess: user.freeAccess === true,
+          locked: user.locked === true,
           expiresAt: user.expiresAt || null,
           createdAt: user.createdAt || null,
           paid: paid(user)

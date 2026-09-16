@@ -8,6 +8,7 @@ function userFromRow(row) {
     phone: row.phone,
     role: row.role || 'user',
     freeAccess: row.free_access === true,
+    locked: row.locked === true,
     expiresAt: row.expires_at
       ? new Date(row.expires_at).toISOString()
       : null,

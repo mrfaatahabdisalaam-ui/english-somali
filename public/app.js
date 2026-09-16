@@ -471,8 +471,10 @@ async function loadAdminUsers() {
     container.innerHTML = users.map(user => {
       const admin = user.role === 'admin';
       const free = user.freeAccess === true;
+      const locked = user.locked === true;
 
-      let status = '🔴 No access';
+      let status = '🔴 Expired';
+      let daysRemaining = 0;
 
       if (admin) {
         status = '👑 ADMIN • FREE';
@@ -482,16 +484,39 @@ async function loadAdminUsers() {
         user.expiresAt &&
         new Date(user.expiresAt).getTime() > Date.now()
       ) {
-        status =
-          '🟢 Paid ilaa ' +
-          new Date(user.expiresAt).toLocaleDateString('so-SO');
+        const diff =
+          new Date(user.expiresAt).getTime() - Date.now();
+
+        daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+
+        status = '🟢 Active';
       }
+
+      const expiry = user.expiresAt
+        ? new Date(user.expiresAt).toLocaleDateString('so-SO')
+        : '—';
 
       return `
         <div class="admin-user-card">
           <div class="admin-user-info">
             <strong>📱 ${esc(user.phone)}</strong>
+
             <span>${status}</span>
+
+            <small>📅 Membership: ${expiry}</small>
+
+            ${
+              admin || free
+                ? ''
+                : `<small>⏳ Maalmaha haray: ${daysRemaining}</small>`
+            }
+
+            ${
+              locked
+                ? '<small>🔒 Account-ku waa xiran yahay</small>'
+                : ''
+            }
+
             <small>ID: ${esc(user.id)}</small>
           </div>
 
@@ -500,6 +525,44 @@ async function loadAdminUsers() {
               ? '<div class="admin-badge">👑 ADMIN</div>'
               : `
                 <div class="admin-user-actions">
+
+                  <button
+                    type="button"
+                    class="add-30-days"
+                    data-user-id="${esc(user.id)}">
+                    ➕ +30 maalmood
+                  </button>
+
+                  <button
+                    type="button"
+                    class="activate-user"
+                    data-user-id="${esc(user.id)}">
+                    🟢 Active ka dhig
+                  </button>
+
+                  <button
+                    type="button"
+                    class="expire-user"
+                    data-user-id="${esc(user.id)}">
+                    🔴 Expired ka dhig
+                  </button>
+
+                  ${
+                    locked
+                      ? `<button
+                          type="button"
+                          class="unlock-user"
+                          data-user-id="${esc(user.id)}">
+                          🔓 Fur account
+                        </button>`
+                      : `<button
+                          type="button"
+                          class="lock-user"
+                          data-user-id="${esc(user.id)}">
+                          🔒 Xir account
+                        </button>`
+                  }
+
                   ${
                     free
                       ? `<button
@@ -516,16 +579,13 @@ async function loadAdminUsers() {
                         </button>`
                   }
 
-                  ${
-                    user.expiresAt
-                      ? `<button
-                          type="button"
-                          class="revoke-paid"
-                          data-user-id="${esc(user.id)}">
-                          🚫 Revoke Paid
-                        </button>`
-                      : ''
-                  }
+                  <button
+                    type="button"
+                    class="revoke-paid"
+                    data-user-id="${esc(user.id)}">
+                    🚫 Ka qaad Paid
+                  </button>
+
                 </div>
               `
           }
@@ -548,11 +608,126 @@ async function loadAdminUsers() {
         revokePaid(button.dataset.userId);
     });
 
+    container.querySelectorAll('.add-30-days').forEach(button => {
+      button.onclick = () =>
+        add30Days(button.dataset.userId);
+    });
+
+    container.querySelectorAll('.activate-user').forEach(button => {
+      button.onclick = () =>
+        activateUser(button.dataset.userId);
+    });
+
+    container.querySelectorAll('.expire-user').forEach(button => {
+      button.onclick = () =>
+        expireUser(button.dataset.userId);
+    });
+
+    container.querySelectorAll('.lock-user').forEach(button => {
+      button.onclick = () =>
+        lockUser(button.dataset.userId);
+    });
+
+    container.querySelectorAll('.unlock-user').forEach(button => {
+      button.onclick = () =>
+        unlockUser(button.dataset.userId);
+    });
+
   } catch (error) {
     container.innerHTML =
       '<div class="notice">❌ ' +
       esc(error.error || 'Users lama soo gelin.') +
       '</div>';
+  }
+}
+
+async function activateUser(userId) {
+  if (!confirm('User-kan Active ma ka dhigaysaa?')) return;
+
+  try {
+    const result = await api(
+      `/api/admin/user/${encodeURIComponent(userId)}/activate`,
+      { method: 'POST' }
+    );
+
+    toast(result.message || '🟢 User-ka waa Active.');
+
+    await loadAdminUsers();
+    await loadAdminStats();
+  } catch (error) {
+    toast(error.error || 'Active lagama dhigi karin.');
+  }
+}
+
+async function expireUser(userId) {
+  if (!confirm('User-kan Expired ma ka dhigaysaa?')) return;
+
+  try {
+    const result = await api(
+      `/api/admin/user/${encodeURIComponent(userId)}/expire`,
+      { method: 'POST' }
+    );
+
+    toast(result.message || '🔴 User-ka waa Expired.');
+
+    await loadAdminUsers();
+    await loadAdminStats();
+  } catch (error) {
+    toast(error.error || 'Expired lagama dhigi karin.');
+  }
+}
+
+async function add30Days(userId) {
+  if (!confirm('Qofkan 30 maalmood ma ugu dari kartaa?')) return;
+
+  try {
+    const result = await api(
+      `/api/admin/user/${encodeURIComponent(userId)}/add-30-days`,
+      { method: 'POST' }
+    );
+
+    toast(result.message || '➕ 30 maalmood ayaa lagu daray.');
+
+    await loadAdminUsers();
+    await loadAdminStats();
+  } catch (error) {
+    toast(error.error || '30 maalmood laguma darin.');
+  }
+}
+
+async function lockUser(userId) {
+  if (!confirm('Account-kan ma xiraysaa?')) return;
+
+  try {
+    const result = await api(
+      `/api/admin/user/${encodeURIComponent(userId)}/lock`,
+      { method: 'POST' }
+    );
+
+    toast(result.message || '🔒 Account-ka waa la xiray.');
+
+    await loadAdminUsers();
+    await loadAdminStats();
+  } catch (error) {
+    toast(error.error || 'Account-ka lama xiri karin.');
+  }
+}
+
+async function unlockUser(userId) {
+  if (!confirm('Account-kan ma furaysaa?')) return;
+
+  try {
+    const result = await api(
+      `/api/admin/user/${encodeURIComponent(userId)}/unlock`,
+      { method: 'POST' }
+    );
+
+    toast(result.message || '🔓 Account-ka waa la furay.');
+
+    await loadAdminUsers();
+    await loadAdminStats();
+  } catch (error) {
+    toast(error.error || 'Account-ka lama furi karin.');
   }
 }
 
