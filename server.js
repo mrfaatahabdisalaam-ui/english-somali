@@ -86,7 +86,7 @@ const PORT = process.env.PORT || 3000;
   ADMIN_PHONE waa number-ka admin-ka.
 */
 const ADMIN_PASSWORD =
-  process.env.ADMIN_PASSWORD || 'ceadce18c5d8b4295898c8db3fe87decaaa0ccf967dd3df798134099b0c571ae';
+  process.env.ADMIN_PASSWORD;
 
 const ADMIN_PHONE = '';
 
@@ -617,10 +617,17 @@ app.get('/api/lessons', auth, async (req, res) => {
 app.post('/api/admin/login', async (req, res) => {
   try {
     const adminId = String(req.body.adminId || '').trim();
+    const adminPassword = String(req.body.password || '');
 
     if (adminId !== ADMIN_ID) {
       return res.status(401).json({
         error: 'Admin ID khalad ah'
+      });
+    }
+
+    if (!ADMIN_PASSWORD || adminPassword !== ADMIN_PASSWORD) {
+      return res.status(401).json({
+        error: 'Admin password khalad ah'
       });
     }
 
