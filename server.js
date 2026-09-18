@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const session = require('express-session');
+const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
@@ -12,6 +13,17 @@ const util = require('util');
 const { db, userFromRow } = require('./db-models');
 
 const execFileAsync = util.promisify(execFile);
+
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: {
+    error: 'Isku-dayo badan. Fadlan sug 15 daqiiqo.'
+  }
+});
+
 
 /* =========================
    PIN SECURITY
@@ -269,49 +281,6 @@ app.get('/api/config', (req, res) => {
 app.post('/api/login', async (req, res) => {
   try {
     const loginValue = String(req.body.phone || '').trim();
-
-    // ADMIN LOGIN - ID sax ah oo keliya
-    if (loginValue === ADMIN_ID) {
-      const result = await db.query(
-        `SELECT * FROM users WHERE id = $1 LIMIT 1`,
-        [ADMIN_ID]
-      );
-
-      let row = result.rows[0];
-
-      if (!row) {
-        const inserted = await db.query(
-          `INSERT INTO users
-            (id, phone, role, free_access, expires_at)
-           VALUES ($1, $2, 'admin', true, null)
-           RETURNING *`,
-          [ADMIN_ID, ADMIN_ID]
-        );
-
-        row = inserted.rows[0];
-      } else if (row.role !== 'admin' || !row.free_access) {
-        const updated = await db.query(
-          `UPDATE users
-           SET role = 'admin', free_access = true, expires_at = null
-           WHERE id = $1
-           RETURNING *`,
-          [ADMIN_ID]
-        );
-
-        row = updated.rows[0];
-      }
-
-      const user = userFromRow(row);
-      req.session.userId = user.id;
-
-      return res.json({
-        phone: user.phone,
-        role: 'admin',
-        isAdmin: true,
-        paid: true,
-        expiresAt: null
-      });
-    }
 
     // USER LOGIN - phone + PIN
     const pin = String(req.body.pin || '').trim();
@@ -614,7 +583,7 @@ app.get('/api/lessons', auth, async (req, res) => {
    ADMIN LOGIN
 ========================= */
 
-app.post('/api/admin/login', async (req, res) => {
+app.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
   try {
     const adminId = String(req.body.adminId || '').trim();
     const adminPassword = String(req.body.password || '');
@@ -690,10 +659,10 @@ app.post('/api/admin/login', async (req, res) => {
 ========================= */
 
 app.post('/api/admin/logout', admin, (req, res) => {
-  req.session.admin = false;
-
-  res.json({
-    ok: true
+  req.session.destroy(() => {
+    res.json({
+      ok: true
+    });
   });
 });
 
@@ -1445,45 +1414,59 @@ app.get('/api/admin/lessons', admin, async (req, res) => {
 ========================= */
 
 app.post(
-  '/api/admin/lesson',
+  "/api/admin/lesson",
   admin,
+  upload.single("video"),
   async (req, res) => {
-    try {
-      const {
-        title,
-        description,
-        videoUrl,
-        videoPublicId,
-        lines
-      } = req.body;
+    let uploadedFile = null;
 
-      if (!videoUrl || !videoPublicId) {
-        return res.status(400).json({
-          error: 'Video-ga Cloudinary lama helin'
-        });
+    try {
+      const { title, description, lines } = req.body;
+
+      if (!req.file) {
+        return res.status(400).json({ error: "Video geli." });
       }
 
       if (!title || !String(title).trim()) {
+        return res.status(400).json({ error: "Magaca casharka geli" });
+      }
+
+      let parsedLines;
+
+      try {
+        parsedLines =
+          typeof lines === "string"
+            ? JSON.parse(lines)
+            : lines;
+      } catch (e) {
         return res.status(400).json({
-          error: 'Magaca casharka geli'
+          error: "Subtitles-ka JSON sax ma aha."
         });
       }
 
-      if (!Array.isArray(lines) || !lines.length) {
+      if (!Array.isArray(parsedLines) || !parsedLines.length) {
         return res.status(400).json({
-          error: 'Ku dar ugu yaraan hal subtitle'
+          error: "Ku dar ugu yaraan hal subtitle"
         });
       }
+
+      uploadedFile = await uploadVideoToCloudinary(
+        req.file.path
+      );
+
+      const videoUrl = uploadedFile.secure_url;
+      const videoPublicId = uploadedFile.public_id;
 
       const id = Date.now().toString();
-      const cleanTitle = String(title).trim();
-      const cleanDescription = String(description || '').trim();
 
-      const cleanLines = lines.map((x) => ({
+      const cleanTitle = String(title).trim();
+      const cleanDescription = String(description || "").trim();
+
+      const cleanLines = parsedLines.map((x) => ({
         start: Number(x.start),
         end: Number(x.end),
-        en: String(x.en || ''),
-        so: String(x.so || '')
+        en: String(x.en || ""),
+        so: String(x.so || "")
       }));
 
       const result = await db.query(
@@ -1510,15 +1493,24 @@ app.post(
         ]
       );
 
+      try {
+        await fs.promises.unlink(req.file.path);
+      } catch (deleteError) {
+        console.log(
+          "Local video delete warning:",
+          deleteError.message
+        );
+      }
+
       const row = result.rows[0];
 
       const item = {
         id: row.id,
         title: row.title,
-        description: row.description || '',
-        video: row.video_url || row.video || '',
-        videoUrl: row.video_url || '',
-        videoPublicId: row.video_public_id || '',
+        description: row.description || "",
+        video: row.video_url || row.video || "",
+        videoUrl: row.video_url || "",
+        videoPublicId: row.video_public_id || "",
         lines: Array.isArray(row.lines) ? row.lines : [],
         createdAt: row.created_at
           ? new Date(row.created_at).toISOString()
@@ -1528,18 +1520,38 @@ app.post(
       res.json({
         ok: true,
         item,
-        message: '✅ Casharka waa la geliyey.'
+        message: "✅ Casharka waa la geliyey."
       });
+
     } catch (error) {
-      console.error('ADD LESSON DB ERROR:', error);
+      console.error("ADD LESSON ERROR:", error);
+
+      if (uploadedFile?.public_id) {
+        try {
+          await cloudinary.uploader.destroy(
+            uploadedFile.public_id,
+            { resource_type: "video" }
+          );
+        } catch (cleanupError) {
+          console.error(
+            "Cloudinary cleanup error:",
+            cleanupError.message
+          );
+        }
+      }
+
+      if (req.file?.path) {
+        try {
+          await fs.promises.unlink(req.file.path);
+        } catch (deleteError) {}
+      }
 
       res.status(500).json({
-        error: 'Lesson database error'
+        error: error.message || "Lesson upload error"
       });
     }
   }
 );
-
 
 /* =========================
    DELETE LESSON

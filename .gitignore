@@ -29,3 +29,5 @@ public/*.current-backup
 public/*.step3-backup
 
 data-backup-*/
+*-cookie.txt
+.env
