@@ -285,6 +285,25 @@ app.post('/api/login', async (req, res) => {
     // USER LOGIN - phone + PIN
     const pin = String(req.body.pin || '').trim();
 
+    // ADMIN LOGIN THROUGH THE SAME LOGIN PAGE
+    if (loginValue === ADMIN_ID) {
+      if (!ADMIN_PASSWORD || pin !== ADMIN_PASSWORD) {
+        return res.status(401).json({
+          error: '❌ Admin PIN-ka waa khalad.'
+        });
+      }
+
+      req.session.userId = ADMIN_ID;
+
+      return res.json({
+        phone: ADMIN_ID,
+        role: 'admin',
+        isAdmin: true,
+        paid: true,
+        expiresAt: null
+      });
+    }
+
     if (!/^61[0-9]{7}$/.test(loginValue)) {
       return res.status(400).json({
         error: '❌ Lambarka waa inuu ahaadaa 9 lambar oo ka bilaabanaya 61. Tusaale: 612942662'

@@ -136,8 +136,8 @@ async function login() {
   const phone = $('phone')?.value.trim();
   const pin = $('pin')?.value.trim();
 
-  if (!/^61[0-9]{7}$/.test(phone)) {
-    toast('❌ Lambarka waa inuu ahaadaa 9 lambar oo ka bilaabanaya 61. Tusaale: 612942662');
+  if (phone !== 'ADMIN-001' && !/^61[0-9]{7}$/.test(phone)) {
+    toast('❌ Geli lambar sax ah ama ADMIN-001.');
     return;
   }
 
