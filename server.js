@@ -1036,6 +1036,89 @@ app.post('/api/admin/user/:id/add-30-days', admin, async (req, res) => {
 });
 
 /* =========================
+   UNDO 30 DAYS
+========================= */
+
+app.post('/api/admin/user/:id/undo-30-days', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT *
+       FROM users
+       WHERE id = $1 AND role <> 'admin'`,
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'User not found ama Admin lama beddeli karo'
+      });
+    }
+
+    const user = result.rows[0];
+
+    if (!user.expires_at) {
+      return res.status(400).json({
+        error: 'User-kan ma laha membership expiry oo 30 maalmood laga laabto.'
+      });
+    }
+
+    const expiresAt = new Date(user.expires_at);
+    expiresAt.setDate(expiresAt.getDate() - MEMBERSHIP_DAYS);
+
+    await db.query(
+      `UPDATE users
+       SET expires_at = $1
+       WHERE id = $2 AND role <> 'admin'`,
+      [expiresAt.toISOString(), user.id]
+    );
+
+    res.json({
+      ok: true,
+      message: '↩️ 30 maalmood waa laga laabay.',
+      expiresAt: expiresAt.toISOString()
+    });
+  } catch (error) {
+    console.error('UNDO 30 DAYS DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'Undo 30 days database error'
+    });
+  }
+});
+
+/* =========================
+   DELETE USER
+========================= */
+
+app.delete('/api/admin/user/:id', admin, async (req, res) => {
+  try {
+    const result = await db.query(
+      `DELETE FROM users
+       WHERE id = $1 AND role <> 'admin'
+       RETURNING id, phone`,
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'User not found ama Admin lama tirtiri karo'
+      });
+    }
+
+    res.json({
+      ok: true,
+      message: '🗑️ User-ka waa la tirtiray.'
+    });
+  } catch (error) {
+    console.error('DELETE USER DB ERROR:', error);
+
+    res.status(500).json({
+      error: 'User-ka lama tirtiri karin database-ka.'
+    });
+  }
+});
+
+/* =========================
    SET ACTIVE / EXPIRED
 ========================= */
 

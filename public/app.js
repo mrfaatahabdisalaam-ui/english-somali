@@ -530,6 +530,20 @@ async function loadAdminUsers() {
 
                   <button
                     type="button"
+                    class="undo-30-days"
+                    data-user-id="${esc(user.id)}">
+                    ↩️ Ka laabo 30 maalmood
+                  </button>
+
+                  <button
+                    type="button"
+                    class="delete-user"
+                    data-user-id="${esc(user.id)}">
+                    🗑️ Delete User
+                  </button>
+
+                  <button
+                    type="button"
                     class="activate-user"
                     data-user-id="${esc(user.id)}">
                     🟢 Active ka dhig
@@ -606,6 +620,16 @@ async function loadAdminUsers() {
     container.querySelectorAll('.add-30-days').forEach(button => {
       button.onclick = () =>
         add30Days(button.dataset.userId);
+    });
+
+    container.querySelectorAll('.undo-30-days').forEach(button => {
+      button.onclick = () =>
+        undo30Days(button.dataset.userId);
+    });
+
+    container.querySelectorAll('.delete-user').forEach(button => {
+      button.onclick = () =>
+        deleteUser(button.dataset.userId);
     });
 
     container.querySelectorAll('.activate-user').forEach(button => {
@@ -687,6 +711,42 @@ async function add30Days(userId) {
     await loadAdminStats();
   } catch (error) {
     toast(error.error || '30 maalmood laguma darin.');
+  }
+}
+
+async function undo30Days(userId) {
+  if (!confirm('30 maalmoodkii ugu dambeeyay ma ka laabaysaa user-kan?')) return;
+
+  try {
+    const result = await api(
+      `/api/admin/user/${encodeURIComponent(userId)}/undo-30-days`,
+      { method: 'POST' }
+    );
+
+    toast(result.message || '↩️ 30 maalmood waa laga laabay.');
+
+    await loadAdminUsers();
+    await loadAdminStats();
+  } catch (error) {
+    toast(error.error || '30 maalmood lagama laabi karin.');
+  }
+}
+
+async function deleteUser(userId) {
+  if (!confirm('⚠️ User-kan ma tirtiraysaa? Tirtiridda user-ka lama soo celin karo.')) return;
+
+  try {
+    const result = await api(
+      `/api/admin/user/${encodeURIComponent(userId)}`,
+      { method: 'DELETE' }
+    );
+
+    toast(result.message || '🗑️ User-ka waa la tirtiray.');
+
+    await loadAdminUsers();
+    await loadAdminStats();
+  } catch (error) {
+    toast(error.error || 'User-ka lama tirtiri karin.');
   }
 }
 
