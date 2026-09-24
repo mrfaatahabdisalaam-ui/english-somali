@@ -1241,11 +1241,13 @@ async function saveLessonEdit() {
   }
 }
 
+let browserWhisper = null;
+let browserWhisperLoading = false;
+
 async function generateAISubtitles() {
   const input = $('video');
-  const button = $('aiSubtitleBtn');
   const status = $('uploadStatus');
-
+  const rows = $('subtitleRows');
   const video = input?.files?.[0];
 
   if (!video) {
@@ -1253,64 +1255,186 @@ async function generateAISubtitles() {
     return;
   }
 
-  try {
-    if (button) {
-      button.disabled = true;
-      button.textContent = '🤖 AI wuu dhageysanayaa...';
-    }
+  if (!rows) {
+    toast('❌ Subtitle rows lama helin.');
+    return;
+  }
 
+  try {
     if (status) {
       status.textContent =
-        '🤖 AI ayaa video-ga dhageysanaya, timestamps iyo Somali translation sameynaya...';
+        '⏳ AI English transcription ayaa browser-ka ku bilaabanaya...';
       show('uploadStatus');
-    }
-
-    const form = new FormData();
-    form.append('video', video);
-
-    const result = await api('/api/admin/auto-subtitles', {
-      method: 'POST',
-      body: form
-    });
-
-    const rows = $('subtitleRows');
-
-    if (!rows) {
-      throw new Error('Subtitle rows lama helin.');
     }
 
     rows.innerHTML = '';
 
-    for (const line of (result.lines || [])) {
-      addSubtitleRow(line);
+    /*
+      Transformers.js wuxuu ku shaqeynayaa browser-ka.
+      OpenAI API looma isticmaalayo.
+    */
+    if (!browserWhisper) {
+      if (browserWhisperLoading) {
+        toast('⏳ AI model-ka wali wuu soo degayaa...');
+        return;
+      }
+
+      browserWhisperLoading = true;
+
+      const { pipeline, env } = await import(
+        'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.0'
+      );
+
+      env.allowLocalModels = false;
+      env.allowRemoteModels = true;
+
+      if (status) {
+        status.textContent =
+          '⬇️ AI model-ka English ayaa browser-ka soo dejinaya... Tani markii ugu horreysa ayay qaadan kartaa.';
+      }
+
+      browserWhisper = await pipeline(
+        'automatic-speech-recognition',
+        'Xenova/whisper-tiny.en',
+        {
+          dtype: 'q4'
+        }
+      );
+
+      browserWhisperLoading = false;
     }
 
     if (status) {
       status.textContent =
-        `✅ AI wuxuu sameeyay ${(result.lines || []).length} subtitles. Dib u eeg kadib Upload Lesson dheh.`;
+        '🔊 Video-ga ayaa la dhageysanayaa... English + timestamps ayaa la sameynayaa.';
     }
 
-    toast('✅ AI subtitles waa diyaar.');
+    /*
+      Video → Audio
+    */
+    const arrayBuffer = await video.arrayBuffer();
 
-  } catch (error) {
-    console.error(error);
+    const AudioCtx =
+      window.AudioContext ||
+      window.webkitAudioContext;
+
+    if (!AudioCtx) {
+      throw new Error('Browser-kan AudioContext ma taageerayo.');
+    }
+
+    const audioContext = new AudioCtx();
+
+    const decoded = await audioContext.decodeAudioData(arrayBuffer);
+
+    /*
+      Whisper wuxuu isticmaalaa 16kHz mono.
+    */
+    const targetRate = 16000;
+    const duration = decoded.duration;
+
+    const offline = new OfflineAudioContext(
+      1,
+      Math.ceil(duration * targetRate),
+      targetRate
+    );
+
+    const source = offline.createBufferSource();
+    source.buffer = decoded;
+    source.connect(offline.destination);
+    source.start(0);
+
+    const rendered = await offline.startRendering();
+
+    const audioData = rendered.getChannelData(0);
 
     if (status) {
       status.textContent =
-        '❌ ' + (error.error || error.message || 'AI subtitles waa fashilmay.');
+        '🤖 English-ka ayaa hadda la aqrinayaa...';
+    }
+
+    /*
+      return_timestamps=true:
+      wuxuu soo celinayaa chunks leh
+      [start, end] + English text.
+    */
+    const result = await browserWhisper(audioData, {
+      return_timestamps: true,
+      chunk_length_s: 30,
+      stride_length_s: 5
+    });
+
+    await audioContext.close();
+
+    const chunks = Array.isArray(result?.chunks)
+      ? result.chunks
+      : [];
+
+    if (!chunks.length) {
+      throw new Error('English subtitles lama helin.');
+    }
+
+    let count = 0;
+
+    for (const chunk of chunks) {
+      const timestamp = chunk.timestamp;
+
+      if (!Array.isArray(timestamp)) continue;
+
+      const start = Number(timestamp[0]);
+      const end = Number(timestamp[1]);
+
+      const en = String(chunk.text || '').trim();
+
+      if (
+        !Number.isFinite(start) ||
+        !Number.isFinite(end) ||
+        end <= start ||
+        !en
+      ) {
+        continue;
+      }
+
+      addSubtitleRow({
+        start: start.toFixed(1),
+        end: end.toFixed(1),
+        en,
+        so: ''
+      });
+
+      count++;
+    }
+
+    if (!count) {
+      throw new Error('English subtitles sax ah lama helin.');
+    }
+
+    if (status) {
+      status.textContent =
+        `✅ ${count} English subtitles ayaa otomaatig loo sameeyay. Hadda Somali-ga adiga ku qor.`;
       show('uploadStatus');
     }
 
-    toast(error.error || error.message || 'AI subtitles waa fashilmay.');
+    toast(`✅ ${count} English subtitles waa diyaar.`);
 
-  } finally {
-    if (button) {
-      button.disabled = false;
-      button.textContent = '🤖 AI Subtitle Samee';
+  } catch (error) {
+    console.error('BROWSER WHISPER ERROR:', error);
+
+    browserWhisperLoading = false;
+
+    if (status) {
+      status.textContent =
+        '❌ ' +
+        (error?.message ||
+          'English transcription ayaa fashilmay.');
+      show('uploadStatus');
     }
+
+    toast(
+      error?.message ||
+      'English transcription ayaa fashilmay.'
+    );
   }
 }
-
 
 async function uploadLesson(event) {
   event.preventDefault();
@@ -1643,6 +1767,20 @@ function setupAdminEvents() {
   $('aiSubtitleBtn')?.addEventListener('click', generateAISubtitles);
 
   setupTimestampEditor();
+
+  // 🎬 VIDEO LA DOORTO → AI SUBTITLES SI TOOS AH U BILAAB
+  $('video')?.addEventListener('change', async () => {
+    const video = $('video')?.files?.[0];
+
+    if (!video) return;
+
+    // Nadiifi subtitles-kii hore
+    const rows = $('subtitleRows');
+    if (rows) rows.innerHTML = '';
+
+    // AI si otomaatig ah u bilow
+    await generateAISubtitles();
+  });
 
   $('refreshUsers')?.addEventListener('click', async () => {
     await loadAdminUsers();
