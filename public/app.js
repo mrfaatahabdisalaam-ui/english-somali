@@ -1241,9 +1241,6 @@ async function saveLessonEdit() {
   }
 }
 
-let browserWhisper = null;
-let browserWhisperLoading = false;
-
 async function generateAISubtitles() {
   const input = $('video');
   const status = $('uploadStatus');
@@ -1261,129 +1258,51 @@ async function generateAISubtitles() {
   }
 
   try {
+    rows.innerHTML = '';
+
     if (status) {
       status.textContent =
-        '⏳ AI English transcription ayaa browser-ka ku bilaabanaya...';
+        '📤 Video-ga server-ka ayaa loo dirayaa...';
       show('uploadStatus');
     }
 
-    rows.innerHTML = '';
+    const fd = new FormData();
+    fd.append('video', video);
 
-    /*
-      Transformers.js wuxuu ku shaqeynayaa browser-ka.
-      OpenAI API looma isticmaalayo.
-    */
-    if (!browserWhisper) {
-      if (browserWhisperLoading) {
-        toast('⏳ AI model-ka wali wuu soo degayaa...');
-        return;
+    const response = await fetch(
+      '/api/admin/auto-subtitles',
+      {
+        method: 'POST',
+        body: fd
       }
-
-      browserWhisperLoading = true;
-
-      const { pipeline, env } = await import(
-        'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.0'
-      );
-
-      env.allowLocalModels = false;
-      env.allowRemoteModels = true;
-
-      if (status) {
-        status.textContent =
-          '⬇️ AI model-ka English ayaa browser-ka soo dejinaya... Tani markii ugu horreysa ayay qaadan kartaa.';
-      }
-
-      browserWhisper = await pipeline(
-        'automatic-speech-recognition',
-        'Xenova/whisper-tiny.en',
-        {
-          dtype: 'q4'
-        }
-      );
-
-      browserWhisperLoading = false;
-    }
-
-    if (status) {
-      status.textContent =
-        '🔊 Video-ga ayaa la dhageysanayaa... English + timestamps ayaa la sameynayaa.';
-    }
-
-    /*
-      Video → Audio
-    */
-    const arrayBuffer = await video.arrayBuffer();
-
-    const AudioCtx =
-      window.AudioContext ||
-      window.webkitAudioContext;
-
-    if (!AudioCtx) {
-      throw new Error('Browser-kan AudioContext ma taageerayo.');
-    }
-
-    const audioContext = new AudioCtx();
-
-    const decoded = await audioContext.decodeAudioData(arrayBuffer);
-
-    /*
-      Whisper wuxuu isticmaalaa 16kHz mono.
-    */
-    const targetRate = 16000;
-    const duration = decoded.duration;
-
-    const offline = new OfflineAudioContext(
-      1,
-      Math.ceil(duration * targetRate),
-      targetRate
     );
 
-    const source = offline.createBufferSource();
-    source.buffer = decoded;
-    source.connect(offline.destination);
-    source.start(0);
+    const result =
+      await response.json().catch(() => ({}));
 
-    const rendered = await offline.startRendering();
-
-    const audioData = rendered.getChannelData(0);
-
-    if (status) {
-      status.textContent =
-        '🤖 English-ka ayaa hadda la aqrinayaa...';
+    if (!response.ok) {
+      throw new Error(
+        result.error ||
+        'Auto subtitle server error.'
+      );
     }
 
-    /*
-      return_timestamps=true:
-      wuxuu soo celinayaa chunks leh
-      [start, end] + English text.
-    */
-    const result = await browserWhisper(audioData, {
-      return_timestamps: true,
-      chunk_length_s: 30,
-      stride_length_s: 5
-    });
-
-    await audioContext.close();
-
-    const chunks = Array.isArray(result?.chunks)
-      ? result.chunks
+    const lines = Array.isArray(result.lines)
+      ? result.lines
       : [];
 
-    if (!chunks.length) {
-      throw new Error('English subtitles lama helin.');
+    if (!lines.length) {
+      throw new Error(
+        'English subtitles lama helin.'
+      );
     }
 
     let count = 0;
 
-    for (const chunk of chunks) {
-      const timestamp = chunk.timestamp;
-
-      if (!Array.isArray(timestamp)) continue;
-
-      const start = Number(timestamp[0]);
-      const end = Number(timestamp[1]);
-
-      const en = String(chunk.text || '').trim();
+    for (const line of lines) {
+      const start = Number(line.start);
+      const end = Number(line.end);
+      const en = String(line.en || '').trim();
 
       if (
         !Number.isFinite(start) ||
@@ -1405,27 +1324,34 @@ async function generateAISubtitles() {
     }
 
     if (!count) {
-      throw new Error('English subtitles sax ah lama helin.');
+      throw new Error(
+        'English subtitles sax ah lama helin.'
+      );
     }
 
     if (status) {
       status.textContent =
-        `✅ ${count} English subtitles ayaa otomaatig loo sameeyay. Hadda Somali-ga adiga ku qor.`;
+        `✅ ${count} English subtitles ayaa otomaatig loo sameeyay. Hadda Somali-ga ku qor.`;
       show('uploadStatus');
     }
 
-    toast(`✅ ${count} English subtitles waa diyaar.`);
+    toast(
+      `✅ ${count} English subtitles waa diyaar.`
+    );
 
   } catch (error) {
-    console.error('BROWSER WHISPER ERROR:', error);
-
-    browserWhisperLoading = false;
+    console.error(
+      'SERVER WHISPER ERROR:',
+      error
+    );
 
     if (status) {
       status.textContent =
         '❌ ' +
-        (error?.message ||
-          'English transcription ayaa fashilmay.');
+        (
+          error?.message ||
+          'English transcription ayaa fashilmay.'
+        );
       show('uploadStatus');
     }
 
