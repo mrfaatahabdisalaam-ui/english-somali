@@ -6,7 +6,6 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
-const OpenAI = require('openai');
 const { v2: cloudinary } = require('cloudinary');
 const { execFile } = require('child_process');
 const util = require('util');
@@ -79,10 +78,6 @@ cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
-});
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
 });
 
 const app = express();
@@ -1326,7 +1321,9 @@ app.get('/api/admin/users', admin, async (req, res) => {
 });
 
 /* =========================
-   AI AUTO SUBTITLES
+   AUTO ENGLISH SUBTITLES
+   Local FFmpeg + Whisper
+   No OpenAI / No paid API
 ========================= */
 
 app.post(
@@ -1334,8 +1331,6 @@ app.post(
   admin,
   upload.single('video'),
   async (req, res) => {
-    let audioFile = null;
-
     try {
       if (!req.file) {
         return res.status(400).json({
@@ -1343,132 +1338,199 @@ app.post(
         });
       }
 
-      if (!process.env.OPENAI_API_KEY) {
+      const videoFile = req.file.path;
+      const audioFile = videoFile + '.wav';
+      const srtFile = audioFile + '.srt';
+
+      const whisperBin =
+        path.join(
+          __dirname,
+          'whisper.cpp',
+          'build',
+          'bin',
+          'whisper-cli'
+        );
+
+      const whisperModel =
+        path.join(
+          __dirname,
+          'whisper.cpp',
+          'models',
+          'ggml-base.en.bin'
+        );
+
+      if (!fs.existsSync(whisperBin)) {
         return res.status(500).json({
-          error: 'OPENAI_API_KEY lama helin'
+          error: 'Whisper engine lama helin.'
         });
       }
 
-      const videoFile = req.file.path;
-      audioFile = videoFile + '.mp3';
+      if (!fs.existsSync(whisperModel)) {
+        return res.status(500).json({
+          error: 'Whisper model lama helin.'
+        });
+      }
 
-      /* Video -> MP3 audio */
+      console.log('🎬 Video:', videoFile);
+      console.log('🎧 Audio extraction bilaabatay...');
+
+      /* 1. Video → WAV */
       await execFileAsync('ffmpeg', [
         '-y',
         '-i', videoFile,
         '-vn',
         '-ac', '1',
         '-ar', '16000',
-        '-b:a', '64k',
+        '-c:a', 'pcm_s16le',
         audioFile
       ]);
 
-      /* AI English transcription + timestamps */
-      const transcription = await openai.audio.transcriptions.create({
-        file: fs.createReadStream(audioFile),
-        model: 'gpt-4o-transcribe',
-        response_format: 'verbose_json',
-        timestamp_granularities: ['segment']
-      });
+      console.log('✅ WAV waa la sameeyay.');
+      console.log('🤖 Whisper transcription bilaabatay...');
 
-      const segments = Array.isArray(transcription.segments)
-        ? transcription.segments
-        : [];
+      /* 2. WAV → English SRT */
+      await execFileAsync(
+        whisperBin,
+        [
+          '-m', whisperModel,
+          '-f', audioFile,
+          '-l', 'en',
+          '-otxt',
+          '-osrt'
+        ],
+        {
+          maxBuffer: 20 * 1024 * 1024
+        }
+      );
 
-      if (!segments.length) {
-        throw new Error('AI transcript segments lama helin.');
+      if (!fs.existsSync(srtFile)) {
+        throw new Error('Whisper SRT ma uusan soo saarin.');
       }
 
-      /* English -> Somali */
-      const input = segments.map((x, i) => ({
-        n: i + 1,
-        start: Number(x.start) || 0,
-        end: Number(x.end) || 0,
-        en: String(x.text || '').trim()
-      }));
+      const srt = fs.readFileSync(srtFile, 'utf8');
 
-      const translation = await openai.responses.create({
-        model: 'gpt-5-mini',
-        input: [
-          {
-            role: 'system',
-            content:
-              'You translate English subtitles into natural, clear Somali. ' +
-              'Return ONLY valid JSON. Keep every subtitle number and timing exactly. ' +
-              'Do not merge or delete subtitles.'
-          },
-          {
-            role: 'user',
-            content:
-              JSON.stringify(input) +
-              '\n\nReturn JSON array with objects containing: n, start, end, en, so.'
-          }
-        ]
-      });
+      /*
+       * SRT:
+       *
+       * 1
+       * 00:00:00,000 --> 00:00:07,920
+       * English text
+       */
 
-      let translatedText = translation.output_text || '';
-      translatedText = translatedText
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/\s*```$/i, '')
-        .trim();
+      const blocks = srt
+        .replace(/\r/g, '')
+        .split(/\n\s*\n/)
+        .map(x => x.trim())
+        .filter(Boolean);
 
-      let translated;
+      const lines = [];
 
+      for (const block of blocks) {
+        const parts = block.split('\n');
+
+        if (parts.length < 3) continue;
+
+        const timeLine = parts[1];
+
+        if (!timeLine.includes('-->')) continue;
+
+        const [startTime, endTime] =
+          timeLine.split('-->').map(x => x.trim());
+
+        const english = parts
+          .slice(2)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!english) continue;
+
+        function srtTimeToSeconds(value) {
+          const m = value.match(
+            /(\d+):(\d+):(\d+),(\d+)/
+          );
+
+          if (!m) return 0;
+
+          return (
+            Number(m[1]) * 3600 +
+            Number(m[2]) * 60 +
+            Number(m[3]) +
+            Number(m[4]) / 1000
+          );
+        }
+
+        lines.push({
+          start: srtTimeToSeconds(startTime),
+          end: srtTimeToSeconds(endTime),
+          en: english,
+          so: ''
+        });
+      }
+
+      console.log(
+        `✅ Whisper wuxuu helay ${lines.length} English subtitle.`
+      );
+
+      /* WAV/SRT waa temporary */
       try {
-        translated = JSON.parse(translatedText);
-      } catch {
-        throw new Error('AI Somali translation JSON sax ma aha.');
-      }
+        if (fs.existsSync(audioFile)) {
+          fs.unlinkSync(audioFile);
+        }
 
-      if (!Array.isArray(translated)) {
-        throw new Error('AI translation format sax ma aha.');
-      }
+        if (fs.existsSync(srtFile)) {
+          fs.unlinkSync(srtFile);
+        }
 
-      const lines = translated
-        .map((x, i) => ({
-          start: Number(x.start),
-          end: Number(x.end),
-          en: String(x.en || input[i]?.en || '').trim(),
-          so: String(x.so || '').trim()
-        }))
-        .filter(x =>
-          Number.isFinite(x.start) &&
-          Number.isFinite(x.end) &&
-          x.end > x.start &&
-          x.en &&
-          x.so
+        const txtFile = audioFile + '.txt';
+
+        if (fs.existsSync(txtFile)) {
+          fs.unlinkSync(txtFile);
+        }
+      } catch (cleanupError) {
+        console.warn(
+          'Temporary files cleanup warning:',
+          cleanupError.message
         );
-
-      if (!lines.length) {
-        throw new Error('AI subtitles lama sameyn karin.');
-      }
-
-      /* Delete temporary MP3; keep uploaded video */
-      if (fs.existsSync(audioFile)) {
-        fs.unlinkSync(audioFile);
       }
 
       res.json({
         ok: true,
-        message: '🤖 AI subtitles waa la sameeyay.',
+        message: 'English subtitles si otomaatig ah ayaa loo sameeyay.',
         video: req.file.filename,
         lines
       });
 
     } catch (error) {
-      if (audioFile && fs.existsSync(audioFile)) {
-        try {
-          fs.unlinkSync(audioFile);
-        } catch {}
-      }
+      console.error(
+        'AUTO WHISPER SUBTITLE ERROR:',
+        error
+      );
 
-      console.error('AI AUTO SUBTITLE ERROR:', error);
+      try {
+        const videoFile = req.file?.path;
+
+        if (videoFile) {
+          const audioFile = videoFile + '.wav';
+          const srtFile = audioFile + '.srt';
+          const txtFile = audioFile + '.txt';
+
+          for (const file of [
+            audioFile,
+            srtFile,
+            txtFile
+          ]) {
+            if (fs.existsSync(file)) {
+              fs.unlinkSync(file);
+            }
+          }
+        }
+      } catch (_) {}
 
       res.status(500).json({
         error:
           error?.message ||
-          'AI subtitles lama sameyn karin.'
+          'Whisper transcription waa fashilmay.'
       });
     }
   }
