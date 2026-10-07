@@ -260,11 +260,50 @@ async function loadLessons() {
   }
 }
 
+function getYoutubeId(url) {
+  if (!url) return '';
+
+  const value = String(url).trim();
+
+  const patterns = [
+    /youtu\.be\/([A-Za-z0-9_-]{11})/,
+    /youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})/,
+    /youtube\.com\/shorts\/([A-Za-z0-9_-]{11})/,
+    /youtube\.com\/embed\/([A-Za-z0-9_-]{11})/
+  ];
+
+  for (const pattern of patterns) {
+    const match = value.match(pattern);
+    if (match) return match[1];
+  }
+
+  if (/^[A-Za-z0-9_-]{11}$/.test(value)) {
+    return value;
+  }
+
+  return '';
+}
+
 function renderLesson(lesson) {
   const lines = Array.isArray(lesson.lines) ? lesson.lines : [];
 
+  const youtubeId =
+    lesson.youtubeId ||
+    (
+      String(lesson.videoPublicId || '').startsWith('youtube:')
+        ? String(lesson.videoPublicId).replace('youtube:', '')
+        : ''
+    ) ||
+    getYoutubeId(lesson.video || lesson.videoUrl || '');
+
+  const isYoutube = Boolean(youtubeId);
+
   return `
-    <article class="lesson" data-lesson-id="${esc(lesson.id)}">
+    <article
+      class="lesson"
+      data-lesson-id="${esc(lesson.id)}"
+      data-youtube-id="${esc(youtubeId)}">
+
       <h2>${esc(lesson.title)}</h2>
 
       ${
@@ -274,13 +313,28 @@ function renderLesson(lesson) {
       }
 
       <div class="player-wrap">
-        <video
-          class="lesson-video"
-          controls
-          preload="metadata"
-          playsinline
-          src="${esc(lesson.video)}">
-        </video>
+
+        ${
+          isYoutube
+            ? `
+              <div class="youtube-player-container">
+                <div
+                  class="youtube-player"
+                  id="youtube-player-${esc(lesson.id)}"
+                  data-youtube-id="${esc(youtubeId)}">
+                </div>
+              </div>
+            `
+            : `
+              <video
+                class="lesson-video"
+                controls
+                preload="metadata"
+                playsinline
+                src="${esc(lesson.video || '')}">
+              </video>
+            `
+        }
 
         <div class="controls">
           <button type="button" class="restart-btn">↩️ Bilow</button>
@@ -324,29 +378,71 @@ function renderLesson(lesson) {
   `;
 }
 
-function wireLessons() {
-  const videos = [...document.querySelectorAll('.lesson-video')];
+function loadYoutubeAPI() {
+  return new Promise(resolve => {
+    if (window.YT && window.YT.Player) {
+      resolve();
+      return;
+    }
 
-  document.querySelectorAll('.lesson').forEach(lesson => {
-    const video = lesson.querySelector('.lesson-video');
-    const linesBox = lesson.querySelector('.lines');
+    const previousCallback = window.onYouTubeIframeAPIReady;
+
+    window.onYouTubeIframeAPIReady = () => {
+      if (typeof previousCallback === 'function') {
+        try {
+          previousCallback();
+        } catch {}
+      }
+
+      resolve();
+    };
+
+    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+      const script = document.createElement('script');
+      script.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(script);
+    }
+  });
+}
+
+async function wireYoutubeLessons() {
+  const youtubeLessons =
+    [...document.querySelectorAll('.lesson[data-youtube-id]')]
+      .filter(lesson => lesson.dataset.youtubeId);
+
+  if (!youtubeLessons.length) return;
+
+  try {
+    await loadYoutubeAPI();
+  } catch {
+    return;
+  }
+
+  if (!window.YT || !window.YT.Player) return;
+
+  youtubeLessons.forEach(lesson => {
+    const lessonId = lesson.dataset.lessonId;
+    const youtubeId = lesson.dataset.youtubeId;
+    const playerElement = document.getElementById(
+      `youtube-player-${lessonId}`
+    );
+
+    if (!playerElement || playerElement.dataset.ready === '1') {
+      return;
+    }
+
+    playerElement.dataset.ready = '1';
+
     const rows = [...lesson.querySelectorAll('.line')];
     const restart = lesson.querySelector('.restart-btn');
     const speed = lesson.querySelector('.speed-btn');
 
-    if (!video) return;
+    let player;
 
-    // Video-kan markuu bilaabmo, videos kale wada jooji
-    video.addEventListener('play', () => {
-      videos.forEach(other => {
-        if (other !== video) {
-          other.pause();
-        }
-      });
-    });
+    const updateSubtitles = () => {
+      if (!player || typeof player.getCurrentTime !== 'function') return;
 
-    video.addEventListener('timeupdate', () => {
-      const time = video.currentTime;
+      const time = Number(player.getCurrentTime()) || 0;
 
       let activeIndex = -1;
 
@@ -362,10 +458,7 @@ function wireLessons() {
         if (active) {
           activeIndex = index;
         }
-      });
 
-      // Erayada subtitle-ka hadda socda
-      rows.forEach(row => {
         row.querySelectorAll('.word').forEach(word => {
           word.classList.remove('current');
         });
@@ -373,16 +466,21 @@ function wireLessons() {
 
       if (activeIndex >= 0) {
         const row = rows[activeIndex];
+
         const start = Number(row.dataset.start) || 0;
-        const end = Number(row.dataset.end) || start + 1;
+        const end =
+          Number(row.dataset.end) || start + 1;
 
         const duration = Math.max(end - start, 0.1);
+
         const progress = Math.min(
           Math.max((time - start) / duration, 0),
           0.999
         );
 
-        const words = [...row.querySelectorAll('.word')];
+        const words = [
+          ...row.querySelectorAll('.word')
+        ];
 
         if (words.length) {
           const wordIndex = Math.min(
@@ -392,17 +490,229 @@ function wireLessons() {
 
           words[wordIndex]?.classList.add('current');
         }
+      }
+    };
 
+    player = new YT.Player(playerElement, {
+      videoId: youtubeId,
+
+      playerVars: {
+        playsinline: 1,
+        rel: 0,
+        modestbranding: 1
+      },
+
+      events: {
+        onReady: () => {
+          playerElement.dataset.playerReady = '1';
+
+          if (!playerElement._subtitleTimer) {
+            playerElement._subtitleTimer =
+              setInterval(updateSubtitles, 100);
+          }
+        },
+
+        onStateChange: event => {
+          if (event.data === YT.PlayerState.PLAYING) {
+            youtubeLessons.forEach(otherLesson => {
+              if (otherLesson === lesson) return;
+
+              const otherElement =
+                otherLesson.querySelector('.youtube-player');
+
+              const otherPlayer =
+                otherElement?._ytPlayer;
+
+              if (
+                otherPlayer &&
+                typeof otherPlayer.pauseVideo === 'function'
+              ) {
+                try {
+                  otherPlayer.pauseVideo();
+                } catch {}
+              }
+            });
+
+            document
+              .querySelectorAll('.lesson-video')
+              .forEach(video => {
+                try {
+                  video.pause();
+                } catch {}
+              });
+          }
+
+          updateSubtitles();
+        }
       }
     });
 
-    // Subtitle kasta waa la gujin karaa
+    playerElement._ytPlayer = player;
+
     rows.forEach(row => {
       row.addEventListener('click', () => {
-        video.currentTime = Number(row.dataset.start) || 0;
+        const start =
+          Number(row.dataset.start) || 0;
+
+        if (
+          player &&
+          typeof player.seekTo === 'function'
+        ) {
+          player.seekTo(start, true);
+          player.playVideo();
+        }
+      });
+    });
+
+    restart?.addEventListener('click', () => {
+      if (
+        player &&
+        typeof player.seekTo === 'function'
+      ) {
+        player.seekTo(0, true);
+        player.playVideo();
+      }
+    });
+
+    speed?.addEventListener('click', () => {
+      const speeds = [1, 1.25, 1.5, 0.75];
+
+      let current = 1;
+
+      try {
+        current =
+          player.getPlaybackRate() || 1;
+      } catch {}
+
+      const index = speeds.indexOf(current);
+
+      const next =
+        speeds[(index + 1) % speeds.length];
+
+      try {
+        player.setPlaybackRate(next);
+      } catch {}
+
+      speed.textContent = next + '×';
+    });
+  });
+}
+
+function wireLessons() {
+  const videos = [
+    ...document.querySelectorAll('.lesson-video')
+  ];
+
+  document.querySelectorAll('.lesson').forEach(lesson => {
+    const video =
+      lesson.querySelector('.lesson-video');
+
+    const linesBox =
+      lesson.querySelector('.lines');
+
+    const rows = [
+      ...lesson.querySelectorAll('.line')
+    ];
+
+    const restart =
+      lesson.querySelector('.restart-btn');
+
+    const speed =
+      lesson.querySelector('.speed-btn');
+
+    // YouTube lesson-kan waxaa maamula wireYoutubeLessons()
+    if (lesson.dataset.youtubeId) {
+      return;
+    }
+
+    if (!video) return;
+
+    video.addEventListener('play', () => {
+      videos.forEach(other => {
+        if (other !== video) {
+          other.pause();
+        }
+      });
+    });
+
+    video.addEventListener('timeupdate', () => {
+      const time = video.currentTime;
+
+      let activeIndex = -1;
+
+      rows.forEach((row, index) => {
+        const start =
+          Number(row.dataset.start) || 0;
+
+        const end =
+          Number(row.dataset.end) || 0;
+
+        const active =
+          time >= start && time < end;
+
+        row.classList.toggle('active', active);
+        row.style.display =
+          active ? 'block' : 'none';
+
+        if (active) {
+          activeIndex = index;
+        }
+      });
+
+      rows.forEach(row => {
+        row.querySelectorAll('.word').forEach(word => {
+          word.classList.remove('current');
+        });
+      });
+
+      if (activeIndex >= 0) {
+        const row = rows[activeIndex];
+
+        const start =
+          Number(row.dataset.start) || 0;
+
+        const end =
+          Number(row.dataset.end) ||
+          start + 1;
+
+        const duration =
+          Math.max(end - start, 0.1);
+
+        const progress =
+          Math.min(
+            Math.max(
+              (time - start) / duration,
+              0
+            ),
+            0.999
+          );
+
+        const words =
+          [...row.querySelectorAll('.word')];
+
+        if (words.length) {
+          const wordIndex =
+            Math.min(
+              Math.floor(
+                progress * words.length
+              ),
+              words.length - 1
+            );
+
+          words[wordIndex]?.classList.add('current');
+        }
+      }
+    });
+
+    rows.forEach(row => {
+      row.addEventListener('click', () => {
+        video.currentTime =
+          Number(row.dataset.start) || 0;
 
         videos.forEach(other => {
-          if (other !== video) other.pause();
+          if (other !== video) {
+            other.pause();
+          }
         });
 
         video.play().catch(() => {});
@@ -411,7 +721,9 @@ function wireLessons() {
 
     restart?.addEventListener('click', () => {
       videos.forEach(other => {
-        if (other !== video) other.pause();
+        if (other !== video) {
+          other.pause();
+        }
       });
 
       video.currentTime = 0;
@@ -419,15 +731,25 @@ function wireLessons() {
     });
 
     speed?.addEventListener('click', () => {
-      const speeds = [1, 1.25, 1.5, 0.75];
-      const current = video.playbackRate || 1;
-      const index = speeds.indexOf(current);
-      const next = speeds[(index + 1) % speeds.length];
+      const speeds =
+        [1, 1.25, 1.5, 0.75];
+
+      const current =
+        video.playbackRate || 1;
+
+      const index =
+        speeds.indexOf(current);
+
+      const next =
+        speeds[(index + 1) % speeds.length];
 
       video.playbackRate = next;
-      speed.textContent = next + '×';
+      speed.textContent =
+        next + '×';
     });
   });
+
+  wireYoutubeLessons();
 }
 
 async function loadAdminStats() {
@@ -1288,6 +1610,7 @@ async function generateAISubtitles() {
 
       env.allowLocalModels = false;
       env.allowRemoteModels = true;
+      env.useBrowserCache = true;
 
       browserWhisper = await pipeline(
         'automatic-speech-recognition',
