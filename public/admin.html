@@ -138,8 +138,10 @@ Video dooro. AI-ga wuxuu sameyn doonaa English + timestamps.
 <script src="app.js"></script>
 <script src="admin.js"></script>
 
-</body>
-</html>
+
+
+
+
 
 
 <!-- YOUTUBE VIDEO IMPORT START -->
@@ -251,6 +253,54 @@ Video dooro. AI-ga wuxuu sameyn doonaa English + timestamps.
   <div id="youtubeSubtitleStatus" style="margin-top:12px;"></div>
 </section>
 <!-- YOUTUBE SUBTITLE EDITOR END -->
+
+</body>
+</html>
+
+
+<!-- YOUTUBE VIDEO IMPORT START -->
+<section class="admin-card" id="youtubeImportCard">
+  <h2>🎬 ADD YOUTUBE VIDEO</h2>
+
+  <label for="youtubeUrl">YouTube URL</label>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <input
+      id="youtubeUrl"
+      type="url"
+      placeholder="https://youtube.com/watch?v=..."
+      style="flex:1;min-width:220px;"
+    >
+    <button type="button" id="loadYoutubeBtn">
+      🔗 LOAD VIDEO
+    </button>
+  </div>
+
+  <div id="youtubeStatus" style="margin-top:12px;"></div>
+
+  <div id="youtubePreview" style="display:none;margin-top:20px;">
+    <h3>VIDEO PREVIEW</h3>
+
+    <div
+      id="youtubePlayer"
+      style="width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;"
+    ></div>
+
+    <div style="margin-top:12px;">
+      <label for="youtubeTitle">MAGACA CASHARKA</label>
+      <input
+        id="youtubeTitle"
+        type="text"
+        placeholder="Tusaale: English Listening Practice - Lesson 1"
+        value=""
+        style="width:100%;margin-top:8px;"
+      >
+    </div>
+  </div>
+</section>
+<!-- YOUTUBE VIDEO IMPORT END -->
+
+
 
 
 

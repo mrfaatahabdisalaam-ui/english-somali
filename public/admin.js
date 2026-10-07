@@ -401,7 +401,7 @@ $('lessonForm')?.addEventListener(
       </iframe>
     `;
 
-    title.textContent = "YouTube Video";
+    title.value = title.value || "YouTube Video";
     preview.style.display = "block";
     status.textContent = "✅ Video-ga waa diyaar.";
   });
