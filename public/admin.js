@@ -412,119 +412,150 @@ $('lessonForm')?.addEventListener(
 // YouTube Subtitle Editor
 // ===============================
 
-(() => {
-  const rows = document.getElementById("youtubeSubtitleRows");
-  const addBtn = document.getElementById("addYoutubeSubtitle");
-  const saveBtn = document.getElementById("saveYoutubeSubtitles");
-  const publishBtn = document.getElementById("publishYoutubeLesson");
-  const status = document.getElementById("youtubeSubtitleStatus");
+const youtubeRows = document.getElementById("youtubeSubtitleRows");
+const addYoutubeSubtitleBtn = document.getElementById("addYoutubeSubtitle");
+const saveYoutubeSubtitlesBtn = document.getElementById("saveYoutubeSubtitles");
+const publishYoutubeLessonBtn = document.getElementById("publishYoutubeLesson");
+const youtubeSubtitleStatus = document.getElementById("youtubeSubtitleStatus");
 
-  if (!rows || !addBtn) return;
+function addYoutubeSubtitleRow(data = {}) {
+  if (!youtubeRows) return;
 
-  function createSubtitleRow() {
-    const row = document.createElement("div");
+  const row = document.createElement("div");
+  row.className = "youtube-subtitle-row";
 
-    row.className = "youtube-subtitle-row";
+  row.innerHTML = `
+    <input class="subtitle-start" type="number" step="0.1"
+      placeholder="Start (sec)" value="${data.start ?? ""}">
+    <input class="subtitle-end" type="number" step="0.1"
+      placeholder="End (sec)" value="${data.end ?? ""}">
+    <input class="subtitle-english" type="text"
+      placeholder="English subtitle" value="${escapeHtml(data.english ?? data.en ?? "")}">
+    <input class="subtitle-somali" type="text"
+      placeholder="Somali translation" value="${escapeHtml(data.somali ?? data.so ?? "")}">
+    <button type="button" class="remove-subtitle">✕</button>
+  `;
 
-    row.style.cssText =
-      "padding:14px;margin:12px 0;border:1px solid rgba(255,255,255,.12);border-radius:12px;";
+  youtubeRows.appendChild(row);
 
-    row.innerHTML = `
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-        <input
-          class="subtitle-start"
-          type="text"
-          value="00:00.0"
-          placeholder="00:00.0"
-          style="width:90px;"
-        >
+  row.querySelector(".remove-subtitle")?.addEventListener("click", () => {
+    row.remove();
+  });
+}
 
-        <input
-          class="subtitle-end"
-          type="text"
-          value="00:03.0"
-          placeholder="00:03.0"
-          style="width:90px;"
-        >
-      </div>
+function collectSubtitles() {
+  if (!youtubeRows) return [];
 
-      <input
-        class="subtitle-english"
-        type="text"
-        placeholder="English subtitle..."
-        style="width:100%;margin-top:10px;"
-      >
+  return [...youtubeRows.querySelectorAll(".youtube-subtitle-row")]
+    .map(row => ({
+      start: Number(row.querySelector(".subtitle-start")?.value || 0),
+      end: Number(row.querySelector(".subtitle-end")?.value || 0),
+      english: row.querySelector(".subtitle-english")?.value.trim() || "",
+      somali: row.querySelector(".subtitle-somali")?.value.trim() || ""
+    }))
+    .filter(x => x.english && x.end > x.start);
+}
 
-      <input
-        class="subtitle-somali"
-        type="text"
-        placeholder="Somali translation..."
-        style="width:100%;margin-top:10px;"
-      >
+addYoutubeSubtitleBtn?.addEventListener("click", () => {
+  addYoutubeSubtitleRow();
+});
 
-      <button
-        type="button"
-        class="remove-subtitle"
-        style="margin-top:10px;"
-      >
-        🗑 Remove
-      </button>
-    `;
+saveYoutubeSubtitlesBtn?.addEventListener("click", () => {
+  const subtitles = collectSubtitles();
 
-    return row;
+  localStorage.setItem(
+    "youtubeSubtitlesDraft",
+    JSON.stringify(subtitles)
+  );
+
+  if (youtubeSubtitleStatus) {
+    youtubeSubtitleStatus.textContent =
+      `💾 ${subtitles.length} subtitle(s) waa la keydiyay.`;
+  }
+});
+
+publishYoutubeLessonBtn?.addEventListener("click", async () => {
+  const urlInput = document.getElementById("youtubeUrl");
+  const titleEl = document.getElementById("youtubeTitle");
+
+  const youtubeUrl = urlInput?.value.trim() || "";
+  const subtitles = collectSubtitles();
+
+  const title =
+    titleEl?.value?.trim?.() ||
+    titleEl?.textContent?.trim() ||
+    "YouTube Lesson";
+
+  if (!youtubeUrl) {
+    if (youtubeSubtitleStatus) {
+      youtubeSubtitleStatus.textContent =
+        "❌ Marka hore geli YouTube URL.";
+    }
+    return;
   }
 
-  addBtn.addEventListener("click", () => {
-    rows.appendChild(createSubtitleRow());
-  });
-
-  rows.addEventListener("click", (event) => {
-    if (!event.target.classList.contains("remove-subtitle")) return;
-
-    const row = event.target.closest(".youtube-subtitle-row");
-
-    if (row) row.remove();
-  });
-
-  function collectSubtitles() {
-    return [...rows.querySelectorAll(".youtube-subtitle-row")]
-      .map(row => ({
-        start: row.querySelector(".subtitle-start")?.value.trim() || "",
-        end: row.querySelector(".subtitle-end")?.value.trim() || "",
-        english: row.querySelector(".subtitle-english")?.value.trim() || "",
-        somali: row.querySelector(".subtitle-somali")?.value.trim() || ""
-      }))
-      .filter(item => item.english || item.somali);
+  if (!subtitles.length) {
+    if (youtubeSubtitleStatus) {
+      youtubeSubtitleStatus.textContent =
+        "❌ Ku dar ugu yaraan hal English subtitle.";
+    }
+    return;
   }
 
-  saveBtn?.addEventListener("click", () => {
-    const subtitles = collectSubtitles();
+  if (youtubeSubtitleStatus) {
+    youtubeSubtitleStatus.textContent =
+      "⏳ Casharka YouTube ayaa la publish-gareynayaa...";
+  }
 
-    localStorage.setItem(
-      "youtubeLessonSubtitles",
-      JSON.stringify(subtitles)
-    );
+  try {
+    const response = await fetch("/api/admin/youtube-lesson", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        title,
+        description: "",
+        youtubeUrl,
+        lines: subtitles
+      })
+    });
 
-    status.textContent =
-      `✅ ${subtitles.length} subtitle line(s) saved locally.`;
-  });
+    const data = await response.json().catch(() => ({}));
 
-  publishBtn?.addEventListener("click", () => {
-    const subtitles = collectSubtitles();
-
-    if (!subtitles.length) {
-      status.textContent =
-        "❌ Marka hore geli ugu yaraan hal subtitle.";
-      return;
+    if (!response.ok) {
+      throw new Error(
+        data.message ||
+        `HTTP ${response.status}`
+      );
     }
 
-    localStorage.setItem(
-      "youtubeLessonSubtitles",
-      JSON.stringify(subtitles)
-    );
+    if (youtubeSubtitleStatus) {
+      youtubeSubtitleStatus.textContent =
+        "✅ YouTube casharka waa la publish gareeyay.";
+    }
 
-    status.textContent =
-      `🚀 ${subtitles.length} subtitle line(s) diyaar ayay u yihiin publish.`;
-  });
-})();
+    localStorage.removeItem("youtubeSubtitlesDraft");
 
+  } catch (error) {
+    console.error("YouTube publish error:", error);
+
+    if (youtubeSubtitleStatus) {
+      youtubeSubtitleStatus.textContent =
+        `❌ Publish failed: ${error.message}`;
+    }
+  }
+});
+
+// Load saved local draft
+try {
+  const saved = JSON.parse(
+    localStorage.getItem("youtubeSubtitlesDraft") || "[]"
+  );
+
+  if (Array.isArray(saved) && saved.length) {
+    saved.forEach(addYoutubeSubtitleRow);
+  }
+} catch (e) {
+  console.warn("YouTube subtitle draft lama akhrin:", e);
+}
