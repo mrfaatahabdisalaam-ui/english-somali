@@ -304,13 +304,15 @@ function renderLesson(lesson) {
       data-lesson-id="${esc(lesson.id)}"
       data-youtube-id="${esc(youtubeId)}">
 
-      <h2>${esc(lesson.title)}</h2>
+      <div class="lesson-header">
+        <h2>${esc(lesson.title)}</h2>
 
-      ${
-        lesson.description
-          ? `<div class="desc">${esc(lesson.description)}</div>`
-          : ''
-      }
+        ${
+          lesson.description
+            ? `<div class="desc">${esc(lesson.description)}</div>`
+            : ''
+        }
+      </div>
 
       <div class="player-wrap">
 
@@ -331,15 +333,21 @@ function renderLesson(lesson) {
                 controls
                 preload="metadata"
                 playsinline
-                src="${esc(lesson.video || '')}">
+                src="${esc(lesson.video || lesson.videoUrl || '')}">
               </video>
             `
         }
 
         <div class="controls">
-          <button type="button" class="restart-btn">↩️ Bilow</button>
-          <button type="button" class="speed-btn">1×</button>
+          <button type="button" class="restart-btn">
+            ↩️ Bilow
+          </button>
+
+          <button type="button" class="speed-btn">
+            1×
+          </button>
         </div>
+
       </div>
 
       <div class="lines">
@@ -360,20 +368,30 @@ function renderLesson(lesson) {
                     <div class="en">
                       ${
                         words.map((word, wordIndex) =>
-                          `<span class="word" data-word="${wordIndex}">
+                          `<span
+                            class="word"
+                            data-word="${wordIndex}">
                             ${esc(word)}
                           </span>`
                         ).join(' ')
                       }
                     </div>
 
-                    <div class="so">${esc(line.so)}</div>
+                    <div class="so">
+                      ${esc(line.so || '')}
+                    </div>
+
                   </div>
                 `;
               }).join('')
-            : '<div class="notice">Subtitles ma jiraan.</div>'
+            : `
+              <div class="notice">
+                Subtitles ma jiraan.
+              </div>
+            `
         }
       </div>
+
     </article>
   `;
 }
@@ -453,7 +471,7 @@ async function wireYoutubeLessons() {
         const active = time >= start && time < end;
 
         row.classList.toggle('active', active);
-        row.style.display = active ? 'block' : 'none';
+        row.classList.toggle('is-hidden', !active);
 
         if (active) {
           activeIndex = index;
@@ -651,8 +669,7 @@ function wireLessons() {
           time >= start && time < end;
 
         row.classList.toggle('active', active);
-        row.style.display =
-          active ? 'block' : 'none';
+      row.classList.toggle('is-hidden', !active);
 
         if (active) {
           activeIndex = index;
