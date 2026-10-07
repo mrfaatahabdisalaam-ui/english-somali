@@ -410,6 +410,146 @@
           </form>
         </section>
 
+        
+        <!-- YOUTUBE LESSON IMPORT -->
+        <section class="card admin-section" id="youtubeImportCard">
+          <div class="admin-section-head">
+            <div>
+              <h3>🎬 ADD YOUTUBE VIDEO</h3>
+              <p class="muted">
+                YouTube video → English subtitles → Somali translation → Publish.
+              </p>
+            </div>
+          </div>
+
+          <label for="youtubeUrl">YouTube URL</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <input
+              id="youtubeUrl"
+              type="url"
+              placeholder="https://youtube.com/watch?v=..."
+              style="flex:1;min-width:220px;"
+            >
+
+            <button
+              type="button"
+              id="loadYoutubeBtn"
+              class="btn btn-secondary">
+              🔗 LOAD VIDEO
+            </button>
+          </div>
+
+          <div id="youtubeStatus" class="notice hidden" style="margin-top:12px;"></div>
+
+          <div id="youtubePreview" style="display:none;margin-top:20px;">
+            <h4>VIDEO PREVIEW</h4>
+
+            <div
+              id="youtubePlayer"
+              style="width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;">
+            </div>
+
+            <label for="youtubeTitle" style="display:block;margin-top:15px;">
+              MAGACA CASHARKA
+            </label>
+
+            <input
+              id="youtubeTitle"
+              type="text"
+              placeholder="Tusaale: English Listening Practice - Lesson 1"
+              style="width:100%;margin-top:8px;"
+            >
+          </div>
+
+          <div id="youtubeSubtitleEditor" style="margin-top:22px;">
+            <div class="subtitle-head">
+              <div>
+                <h4>📝 ENGLISH SUBTITLES</h4>
+                <p class="muted">
+                  Geli waqtiga, English-ka iyo Somali-ga.
+                </p>
+              </div>
+
+              <button
+                id="addYoutubeSubtitle"
+                type="button"
+                class="btn btn-secondary">
+                + Add Subtitle
+              </button>
+            </div>
+
+            <div id="youtubeSubtitleRows" class="subtitle-rows">
+
+              <div class="subtitle-row youtube-subtitle-row">
+
+                <input
+                  class="subtitle-start"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value="0"
+                  placeholder="Start (sec)"
+                >
+
+                <input
+                  class="subtitle-end"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value="3"
+                  placeholder="End (sec)"
+                >
+
+                <input
+                  class="subtitle-english"
+                  type="text"
+                  placeholder="English"
+                >
+
+                <input
+                  class="subtitle-somali"
+                  type="text"
+                  placeholder="Somali"
+                >
+
+                <button
+                  type="button"
+                  class="btn btn-secondary remove-subtitle">
+                  ✕
+                </button>
+
+              </div>
+
+            </div>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
+
+              <button
+                id="saveYoutubeSubtitles"
+                type="button"
+                class="btn btn-secondary">
+                💾 SAVE
+              </button>
+
+              <button
+                id="publishYoutubeLesson"
+                type="button"
+                class="btn btn-primary">
+                🚀 PUBLISH
+              </button>
+
+            </div>
+
+            <div
+              id="youtubeSubtitleStatus"
+              class="notice hidden"
+              style="margin-top:12px;">
+            </div>
+          </div>
+        </section>
+        <!-- END YOUTUBE LESSON IMPORT -->
+
+
         <!-- LESSON MANAGEMENT -->
         <section class="card admin-section">
           <div class="admin-section-head">

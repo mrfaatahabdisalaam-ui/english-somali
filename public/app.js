@@ -2132,3 +2132,308 @@ $('payBtn')?.addEventListener('click', sendPayment);
 $('logoutBtn')?.addEventListener('click', logout);
 
 boot();
+
+
+// =====================================================
+// YouTube Admin Dashboard
+// =====================================================
+
+(() => {
+  const urlInput = document.getElementById("youtubeUrl");
+  const loadBtn = document.getElementById("loadYoutubeBtn");
+  const status = document.getElementById("youtubeStatus");
+  const preview = document.getElementById("youtubePreview");
+  const player = document.getElementById("youtubePlayer");
+  const title = document.getElementById("youtubeTitle");
+  const rows = document.getElementById("youtubeSubtitleRows");
+  const addBtn = document.getElementById("addYoutubeSubtitle");
+  const saveBtn = document.getElementById("saveYoutubeSubtitles");
+  const publishBtn = document.getElementById("publishYoutubeLesson");
+  const subtitleStatus = document.getElementById("youtubeSubtitleStatus");
+
+  if (!urlInput || !loadBtn) return;
+
+  function youtubeId(value) {
+    try {
+      const u = new URL(String(value).trim());
+
+      if (u.hostname.includes("youtu.be")) {
+        return u.pathname.slice(1).split("/")[0];
+      }
+
+      if (u.hostname.includes("youtube.com")) {
+        if (u.pathname === "/watch") {
+          return u.searchParams.get("v");
+        }
+
+        if (u.pathname.startsWith("/shorts/")) {
+          return u.pathname.split("/")[2];
+        }
+
+        if (u.pathname.startsWith("/embed/")) {
+          return u.pathname.split("/")[2];
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function addRow(data = {}) {
+    if (!rows) return;
+
+    const row = document.createElement("div");
+    row.className = "subtitle-row youtube-subtitle-row";
+
+    row.innerHTML = `
+      <input
+        class="subtitle-start"
+        type="number"
+        step="0.1"
+        min="0"
+        placeholder="Start (sec)"
+        value="${Number.isFinite(Number(data.start)) ? data.start : ""}"
+      >
+
+      <input
+        class="subtitle-end"
+        type="number"
+        step="0.1"
+        min="0"
+        placeholder="End (sec)"
+        value="${Number.isFinite(Number(data.end)) ? data.end : ""}"
+      >
+
+      <input
+        class="subtitle-english"
+        type="text"
+        placeholder="English"
+        value="${escapeHtml(data.en || "")}"
+      >
+
+      <input
+        class="subtitle-somali"
+        type="text"
+        placeholder="Somali"
+        value="${escapeHtml(data.so || "")}"
+      >
+
+      <button
+        type="button"
+        class="btn btn-secondary remove-subtitle">
+        ✕
+      </button>
+    `;
+
+    rows.appendChild(row);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function collectRows() {
+    if (!rows) return [];
+
+    return [...rows.querySelectorAll(".youtube-subtitle-row")]
+      .map((row, index) => {
+        const start = Number(
+          row.querySelector(".subtitle-start")?.value
+        );
+
+        const end = Number(
+          row.querySelector(".subtitle-end")?.value
+        );
+
+        const en =
+          row.querySelector(".subtitle-english")?.value.trim() || "";
+
+        const so =
+          row.querySelector(".subtitle-somali")?.value.trim() || "";
+
+        return {
+          index,
+          start,
+          end,
+          en,
+          so
+        };
+      })
+      .filter(line =>
+        Number.isFinite(line.start) &&
+        Number.isFinite(line.end) &&
+        line.start >= 0 &&
+        line.end > line.start &&
+        line.en
+      )
+      .map(({ start, end, en, so }) => ({
+        start,
+        end,
+        en,
+        so
+      }));
+  }
+
+  loadBtn.addEventListener("click", () => {
+    const url = urlInput.value.trim();
+    const id = youtubeId(url);
+
+    if (!id) {
+      status.textContent = "❌ YouTube URL sax ah geli.";
+      status.classList.remove("hidden");
+      if (preview) preview.style.display = "none";
+      return;
+    }
+
+    player.innerHTML = `
+      <iframe
+        width="100%"
+        height="100%"
+        src="https://www.youtube.com/embed/${encodeURIComponent(id)}"
+        title="YouTube video"
+        frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen>
+      </iframe>
+    `;
+
+    if (preview) preview.style.display = "block";
+
+    status.textContent = "✅ Video-ga waa diyaar.";
+    status.classList.remove("hidden");
+  });
+
+  addBtn?.addEventListener("click", () => {
+    addRow();
+  });
+
+  rows?.addEventListener("click", event => {
+    const remove = event.target.closest(".remove-subtitle");
+
+    if (!remove) return;
+
+    const all = rows.querySelectorAll(".youtube-subtitle-row");
+
+    if (all.length > 1) {
+      remove.closest(".youtube-subtitle-row")?.remove();
+    } else {
+      const row = remove.closest(".youtube-subtitle-row");
+      row?.querySelector(".subtitle-start") && (
+        row.querySelector(".subtitle-start").value = ""
+      );
+      row?.querySelector(".subtitle-end") && (
+        row.querySelector(".subtitle-end").value = ""
+      );
+      row?.querySelector(".subtitle-english") && (
+        row.querySelector(".subtitle-english").value = ""
+      );
+      row?.querySelector(".subtitle-somali") && (
+        row.querySelector(".subtitle-somali").value = ""
+      );
+    }
+  });
+
+  saveBtn?.addEventListener("click", () => {
+    const subtitles = collectRows();
+
+    localStorage.setItem(
+      "youtubeSubtitlesDraft",
+      JSON.stringify(subtitles)
+    );
+
+    if (subtitleStatus) {
+      subtitleStatus.textContent =
+        `💾 ${subtitles.length} subtitle(s) waa la keydiyay.`;
+      subtitleStatus.classList.remove("hidden");
+    }
+  });
+
+  publishBtn?.addEventListener("click", async () => {
+    const youtubeUrl = urlInput.value.trim();
+    const lessonTitle = title?.value.trim() || "";
+    const subtitles = collectRows();
+
+    if (!youtubeId(youtubeUrl)) {
+      if (subtitleStatus) {
+        subtitleStatus.textContent =
+          "❌ Marka hore geli YouTube URL sax ah.";
+        subtitleStatus.classList.remove("hidden");
+      }
+      return;
+    }
+
+    if (!lessonTitle) {
+      if (subtitleStatus) {
+        subtitleStatus.textContent =
+          "❌ Magaca casharka geli.";
+        subtitleStatus.classList.remove("hidden");
+      }
+      return;
+    }
+
+    if (!subtitles.length) {
+      if (subtitleStatus) {
+        subtitleStatus.textContent =
+          "❌ Ugu yaraan hal English subtitle geli.";
+        subtitleStatus.classList.remove("hidden");
+      }
+      return;
+    }
+
+    publishBtn.disabled = true;
+    publishBtn.textContent = "⏳ Publishing...";
+
+    try {
+      const result = await api("/api/admin/youtube-lesson", {
+        method: "POST",
+        body: JSON.stringify({
+          title: lessonTitle,
+          description: "",
+          youtubeUrl,
+          lines: subtitles
+        })
+      });
+
+      if (subtitleStatus) {
+        subtitleStatus.textContent =
+          result.message || "✅ YouTube lesson waa la publish gareeyay.";
+        subtitleStatus.classList.remove("hidden");
+      }
+
+      localStorage.removeItem("youtubeSubtitlesDraft");
+
+      await loadAdminLessons();
+      await loadAdminStats();
+
+    } catch (error) {
+      if (subtitleStatus) {
+        subtitleStatus.textContent =
+          "❌ " + (error.error || error.message || "Publish ayaa fashilmay.");
+        subtitleStatus.classList.remove("hidden");
+      }
+    } finally {
+      publishBtn.disabled = false;
+      publishBtn.textContent = "🚀 PUBLISH";
+    }
+  });
+
+  // Soo celi draft-kii hore
+  try {
+    const draft = JSON.parse(
+      localStorage.getItem("youtubeSubtitlesDraft") || "[]"
+    );
+
+    if (Array.isArray(draft) && draft.length && rows) {
+      rows.innerHTML = "";
+      draft.forEach(addRow);
+    }
+  } catch {}
+
+})();
