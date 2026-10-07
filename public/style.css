@@ -4548,3 +4548,283 @@ input[type="file"]{
   }
 }
 
+
+/* =====================================================
+   RESPONSIVE DASHBOARD
+   Mobile + Desktop
+   ===================================================== */
+
+/* YouTube subtitle editor */
+#youtubeImportCard {
+  width: 100%;
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+
+#youtubeImportCard input,
+#youtubeImportCard button {
+  box-sizing: border-box;
+}
+
+#youtubePreview {
+  width: 100%;
+}
+
+#youtubePlayer {
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+#youtubeSubtitleRows {
+  width: 100%;
+}
+
+.youtube-subtitle-row {
+  display: grid;
+  grid-template-columns: 90px 90px minmax(180px, 1fr) minmax(180px, 1fr) 44px;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.youtube-subtitle-row input {
+  min-width: 0;
+  width: 100%;
+}
+
+/* Desktop */
+@media (min-width: 769px) {
+  #youtubeImportCard {
+    padding: 22px;
+  }
+
+  #youtubeImportCard .admin-section-head {
+    margin-bottom: 18px;
+  }
+
+  #youtubeImportCard input {
+    min-height: 44px;
+  }
+
+  #youtubeImportCard button {
+    min-height: 44px;
+  }
+}
+
+/* Tablet */
+@media (max-width: 768px) {
+  #youtubeImportCard {
+    padding: 16px;
+    margin: 12px 0;
+    border-radius: 14px;
+  }
+
+  #youtubeImportCard h3 {
+    font-size: 20px;
+  }
+
+  #youtubeImportCard h4 {
+    font-size: 16px;
+  }
+
+  #youtubeImportCard input {
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  #youtubeImportCard button {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .youtube-subtitle-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .youtube-subtitle-row .subtitle-english,
+  .youtube-subtitle-row .subtitle-somali {
+    grid-column: span 2;
+  }
+
+  .youtube-subtitle-row .remove-subtitle {
+    width: 100%;
+  }
+}
+
+/* Phone */
+@media (max-width: 480px) {
+  #youtubeImportCard {
+    padding: 12px;
+    margin: 8px 0;
+    border-radius: 12px;
+  }
+
+  #youtubeImportCard .admin-section-head {
+    display: block;
+  }
+
+  #youtubeImportCard h3 {
+    font-size: 18px;
+    line-height: 1.3;
+  }
+
+  #youtubeImportCard h4 {
+    font-size: 15px;
+  }
+
+  #youtubeImportCard p {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  #youtubeUrl {
+    width: 100%;
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+  }
+
+  #loadYoutubeBtn {
+    width: 100%;
+  }
+
+  #youtubePreview {
+    margin-top: 14px !important;
+  }
+
+  #youtubePlayer {
+    border-radius: 9px;
+  }
+
+  #youtubeTitle {
+    width: 100%;
+    font-size: 15px;
+  }
+
+  #youtubeSubtitleEditor {
+    margin-top: 16px !important;
+  }
+
+  .subtitle-head {
+    gap: 10px;
+  }
+
+  .subtitle-head button {
+    width: 100%;
+  }
+
+  .youtube-subtitle-row {
+    grid-template-columns: 1fr 1fr;
+    padding: 9px;
+    border-radius: 10px;
+    gap: 7px;
+  }
+
+  .youtube-subtitle-row input {
+    width: 100%;
+    min-width: 0;
+    font-size: 14px;
+  }
+
+  .youtube-subtitle-row .subtitle-start,
+  .youtube-subtitle-row .subtitle-end {
+    grid-column: span 1;
+  }
+
+  .youtube-subtitle-row .subtitle-english,
+  .youtube-subtitle-row .subtitle-somali,
+  .youtube-subtitle-row .remove-subtitle {
+    grid-column: span 2;
+  }
+
+  .youtube-subtitle-row .remove-subtitle {
+    width: 100%;
+  }
+
+  #saveYoutubeSubtitles,
+  #publishYoutubeLesson {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  #youtubeSubtitleStatus {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 360px) {
+  #youtubeImportCard {
+    padding: 9px;
+  }
+
+  #youtubeImportCard h3 {
+    font-size: 17px;
+  }
+
+  .youtube-subtitle-row {
+    padding: 7px;
+  }
+
+  .youtube-subtitle-row input {
+    font-size: 13px;
+  }
+}
+
+
+/* =====================================================
+   YOUTUBE PLAYER — ENGLISH LISTENING PRACTICE SIZE
+   ===================================================== */
+
+#youtubeImportCard {
+  width: 100%;
+  max-width: 1050px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#youtubePlayer {
+  width: 100%;
+  max-width: 820px;
+  aspect-ratio: 16 / 9;
+  margin: 16px auto;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #000;
+}
+
+#youtubePlayer iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  #youtubePlayer {
+    width: 100%;
+    max-width: 100%;
+    aspect-ratio: 16 / 9;
+    margin: 12px auto;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  #youtubeImportCard {
+    width: 100%;
+  }
+
+  #youtubePlayer {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    margin: 10px auto 14px;
+    border-radius: 10px;
+  }
+}
+
