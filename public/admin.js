@@ -334,3 +334,76 @@ $('lessonForm')?.addEventListener(
   publishLesson
 );
 
+
+// ===============================
+// YouTube Video Loader
+// ===============================
+
+(() => {
+  const urlInput = document.getElementById("youtubeUrl");
+  const loadBtn = document.getElementById("loadYoutubeBtn");
+  const status = document.getElementById("youtubeStatus");
+  const preview = document.getElementById("youtubePreview");
+  const player = document.getElementById("youtubePlayer");
+  const title = document.getElementById("youtubeTitle");
+
+  if (!urlInput || !loadBtn) return;
+
+  function getYoutubeId(url) {
+    try {
+      const u = new URL(url);
+
+      if (u.hostname.includes("youtu.be")) {
+        return u.pathname.slice(1).split("/")[0];
+      }
+
+      if (u.hostname.includes("youtube.com")) {
+        if (u.pathname === "/watch") {
+          return u.searchParams.get("v");
+        }
+
+        if (u.pathname.startsWith("/shorts/")) {
+          return u.pathname.split("/")[2];
+        }
+
+        if (u.pathname.startsWith("/embed/")) {
+          return u.pathname.split("/")[2];
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  loadBtn.addEventListener("click", () => {
+    const url = urlInput.value.trim();
+    const videoId = getYoutubeId(url);
+
+    if (!videoId) {
+      status.textContent = "❌ YouTube URL sax ah geli.";
+      preview.style.display = "none";
+      return;
+    }
+
+    status.textContent = "⏳ Video-ga waa la soo bandhigayaa...";
+
+    player.innerHTML = `
+      <iframe
+        width="100%"
+        height="100%"
+        src="https://www.youtube.com/embed/${encodeURIComponent(videoId)}"
+        title="YouTube video"
+        frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen>
+      </iframe>
+    `;
+
+    title.textContent = "YouTube Video";
+    preview.style.display = "block";
+    status.textContent = "✅ Video-ga waa diyaar.";
+  });
+})();
+
