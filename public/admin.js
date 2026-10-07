@@ -443,17 +443,52 @@ function addYoutubeSubtitleRow(data = {}) {
   });
 }
 
+function parseSubtitleTime(value) {
+  const text = String(value ?? "").trim();
+
+  if (!text) return 0;
+
+  // 00:03.0
+  if (text.includes(":")) {
+    const parts = text.split(":");
+
+    if (parts.length === 2) {
+      const minutes = Number(parts[0]) || 0;
+      const seconds = Number(parts[1]) || 0;
+
+      return minutes * 60 + seconds;
+    }
+
+    if (parts.length === 3) {
+      const hours = Number(parts[0]) || 0;
+      const minutes = Number(parts[1]) || 0;
+      const seconds = Number(parts[2]) || 0;
+
+      return hours * 3600 + minutes * 60 + seconds;
+    }
+  }
+
+  return Number(text) || 0;
+}
+
 function collectSubtitles() {
   if (!youtubeRows) return [];
 
   return [...youtubeRows.querySelectorAll(".youtube-subtitle-row")]
     .map(row => ({
-      start: Number(row.querySelector(".subtitle-start")?.value || 0),
-      end: Number(row.querySelector(".subtitle-end")?.value || 0),
-      english: row.querySelector(".subtitle-english")?.value.trim() || "",
-      somali: row.querySelector(".subtitle-somali")?.value.trim() || ""
+      start: parseSubtitleTime(
+        row.querySelector(".subtitle-start")?.value
+      ),
+
+      end: parseSubtitleTime(
+        row.querySelector(".subtitle-end")?.value
+      ),
+
+      en: row.querySelector(".subtitle-english")?.value.trim() || "",
+
+      so: row.querySelector(".subtitle-somali")?.value.trim() || ""
     }))
-    .filter(x => x.english && x.end > x.start);
+    .filter(x => x.en && x.end > x.start);
 }
 
 addYoutubeSubtitleBtn?.addEventListener("click", () => {
@@ -483,7 +518,6 @@ publishYoutubeLessonBtn?.addEventListener("click", async () => {
 
   const title =
     titleEl?.value?.trim?.() ||
-    titleEl?.textContent?.trim() ||
     "YouTube Lesson";
 
   if (!youtubeUrl) {
@@ -532,7 +566,7 @@ publishYoutubeLessonBtn?.addEventListener("click", async () => {
 
     if (youtubeSubtitleStatus) {
       youtubeSubtitleStatus.textContent =
-        "✅ YouTube casharka waa la publish gareeyay.";
+        "✅ YouTube casharka waa la publish gareeyay oo DB-ga ayaa lagu kaydiyay.";
     }
 
     localStorage.removeItem("youtubeSubtitlesDraft");
