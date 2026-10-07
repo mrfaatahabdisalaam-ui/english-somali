@@ -407,3 +407,124 @@ $('lessonForm')?.addEventListener(
   });
 })();
 
+
+// ===============================
+// YouTube Subtitle Editor
+// ===============================
+
+(() => {
+  const rows = document.getElementById("youtubeSubtitleRows");
+  const addBtn = document.getElementById("addYoutubeSubtitle");
+  const saveBtn = document.getElementById("saveYoutubeSubtitles");
+  const publishBtn = document.getElementById("publishYoutubeLesson");
+  const status = document.getElementById("youtubeSubtitleStatus");
+
+  if (!rows || !addBtn) return;
+
+  function createSubtitleRow() {
+    const row = document.createElement("div");
+
+    row.className = "youtube-subtitle-row";
+
+    row.style.cssText =
+      "padding:14px;margin:12px 0;border:1px solid rgba(255,255,255,.12);border-radius:12px;";
+
+    row.innerHTML = `
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input
+          class="subtitle-start"
+          type="text"
+          value="00:00.0"
+          placeholder="00:00.0"
+          style="width:90px;"
+        >
+
+        <input
+          class="subtitle-end"
+          type="text"
+          value="00:03.0"
+          placeholder="00:03.0"
+          style="width:90px;"
+        >
+      </div>
+
+      <input
+        class="subtitle-english"
+        type="text"
+        placeholder="English subtitle..."
+        style="width:100%;margin-top:10px;"
+      >
+
+      <input
+        class="subtitle-somali"
+        type="text"
+        placeholder="Somali translation..."
+        style="width:100%;margin-top:10px;"
+      >
+
+      <button
+        type="button"
+        class="remove-subtitle"
+        style="margin-top:10px;"
+      >
+        🗑 Remove
+      </button>
+    `;
+
+    return row;
+  }
+
+  addBtn.addEventListener("click", () => {
+    rows.appendChild(createSubtitleRow());
+  });
+
+  rows.addEventListener("click", (event) => {
+    if (!event.target.classList.contains("remove-subtitle")) return;
+
+    const row = event.target.closest(".youtube-subtitle-row");
+
+    if (row) row.remove();
+  });
+
+  function collectSubtitles() {
+    return [...rows.querySelectorAll(".youtube-subtitle-row")]
+      .map(row => ({
+        start: row.querySelector(".subtitle-start")?.value.trim() || "",
+        end: row.querySelector(".subtitle-end")?.value.trim() || "",
+        english: row.querySelector(".subtitle-english")?.value.trim() || "",
+        somali: row.querySelector(".subtitle-somali")?.value.trim() || ""
+      }))
+      .filter(item => item.english || item.somali);
+  }
+
+  saveBtn?.addEventListener("click", () => {
+    const subtitles = collectSubtitles();
+
+    localStorage.setItem(
+      "youtubeLessonSubtitles",
+      JSON.stringify(subtitles)
+    );
+
+    status.textContent =
+      `✅ ${subtitles.length} subtitle line(s) saved locally.`;
+  });
+
+  publishBtn?.addEventListener("click", () => {
+    const subtitles = collectSubtitles();
+
+    if (!subtitles.length) {
+      status.textContent =
+        "❌ Marka hore geli ugu yaraan hal subtitle.";
+      return;
+    }
+
+    localStorage.setItem(
+      "youtubeLessonSubtitles",
+      JSON.stringify(subtitles)
+    );
+
+    status.textContent =
+      `🚀 ${subtitles.length} subtitle line(s) diyaar ayay u yihiin publish.`;
+  });
+})();
+

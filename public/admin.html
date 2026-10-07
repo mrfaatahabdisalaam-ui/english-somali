@@ -177,3 +177,73 @@ Video dooro. AI-ga wuxuu sameyn doonaa English + timestamps.
 </section>
 <!-- YOUTUBE VIDEO IMPORT END -->
 
+<!-- YOUTUBE SUBTITLE EDITOR START -->
+<section class="admin-card" id="youtubeSubtitleEditor" style="margin-top:20px;">
+  <h2>📝 ENGLISH SUBTITLES</h2>
+
+  <div id="youtubeSubtitleRows">
+    <div class="youtube-subtitle-row"
+         style="padding:14px;margin:12px 0;border:1px solid rgba(255,255,255,.12);border-radius:12px;">
+
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <input
+          class="subtitle-start"
+          type="text"
+          value="00:00.0"
+          placeholder="00:00.0"
+          style="width:90px;"
+        >
+
+        <input
+          class="subtitle-end"
+          type="text"
+          value="00:03.0"
+          placeholder="00:03.0"
+          style="width:90px;"
+        >
+      </div>
+
+      <input
+        class="subtitle-english"
+        type="text"
+        placeholder="English subtitle..."
+        style="width:100%;margin-top:10px;"
+      >
+
+      <input
+        class="subtitle-somali"
+        type="text"
+        placeholder="Somali translation..."
+        style="width:100%;margin-top:10px;"
+      >
+
+      <button
+        type="button"
+        class="remove-subtitle"
+        style="margin-top:10px;"
+      >
+        🗑 Remove
+      </button>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:15px;">
+    <button type="button" id="addYoutubeSubtitle">
+      + Add Subtitle
+    </button>
+
+    <button type="button" id="saveYoutubeSubtitles">
+      💾 SAVE
+    </button>
+
+    <button type="button" id="publishYoutubeLesson">
+      🚀 PUBLISH
+    </button>
+  </div>
+
+  <div id="youtubeSubtitleStatus" style="margin-top:12px;"></div>
+</section>
+<!-- YOUTUBE SUBTITLE EDITOR END -->
+
+
+
