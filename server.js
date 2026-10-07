@@ -1,3 +1,4 @@
+const { fetchTranscript } = require("youtube-transcript-plus");
 const express = require('express');
 const crypto = require('crypto');
 const session = require('express-session');
@@ -1719,6 +1720,396 @@ app.post(
 
 
 // ===============================
+
+
+/* =====================================================
+   YOUTUBE AUTO ENGLISH SUBTITLE API
+   ===================================================== */
+
+app.post(
+  "/api/admin/youtube-transcript",
+  admin,
+  async (req, res) => {
+    try {
+      const { youtubeUrl } = req.body || {};
+
+      if (!youtubeUrl || !String(youtubeUrl).trim()) {
+        return res.status(400).json({
+          error: "YouTube URL geli."
+        });
+      }
+
+      function getYoutubeId(value) {
+        try {
+          const u = new URL(String(value).trim());
+
+          if (u.hostname.includes("youtu.be")) {
+            return u.pathname.slice(1).split("/")[0];
+          }
+
+          if (u.hostname.includes("youtube.com")) {
+            if (u.pathname === "/watch") {
+              return u.searchParams.get("v");
+            }
+
+            if (u.pathname.startsWith("/shorts/")) {
+              return u.pathname.split("/")[2];
+            }
+
+            if (u.pathname.startsWith("/embed/")) {
+              return u.pathname.split("/")[2];
+            }
+          }
+
+          return null;
+        } catch {
+          return null;
+        }
+      }
+
+      const videoId = getYoutubeId(youtubeUrl);
+
+      if (!videoId) {
+        return res.status(400).json({
+          error: "YouTube URL sax ah geli."
+        });
+      }
+
+      const transcript = await fetchTranscript(
+        `https://www.youtube.com/watch?v=${videoId}`,
+        { lang: "en" }
+      );
+
+      const lines = transcript
+        .map((item) => {
+          const start = Number(item.offset) || 0;
+          const duration = Number(item.duration) || 0;
+          const end = start + duration;
+
+          return {
+            start: Number(start.toFixed(2)),
+            end: Number(end.toFixed(2)),
+            en: String(item.text || "")
+              .replace(/\\n/g, " ")
+              .replace(/\\s+/g, " ")
+              .trim(),
+            so: ""
+          };
+        })
+        .filter((x) => x.en);
+
+      return res.json({
+        ok: true,
+        videoId,
+        count: lines.length,
+        lines
+      });
+
+    } catch (err) {
+      console.error("YOUTUBE TRANSCRIPT ERROR:", err);
+
+      return res.status(500).json({
+        error:
+          err?.message ||
+          "English subtitles-ka YouTube lagama heli karin."
+      });
+    }
+  }
+);
+
+
+/* =====================================================
+   LOCAL WHISPER VIDEO SUBTITLE FALLBACK
+   ===================================================== */
+
+const whisperFs = require("fs");
+const whisperPath = require("path");
+const whisperOs = require("os");
+const whisperSpawn = require("child_process").spawn;
+
+app.post(
+  "/api/admin/whisper-subtitles",
+  admin,
+  upload.single("video"),
+  async (req, res) => {
+    let wavPath = null;
+    let srtPath = null;
+
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          ok: false,
+          error: "Video file dooro."
+        });
+      }
+
+      const videoPath = req.file.path;
+
+      const tempDir = whisperFs.mkdtempSync(
+        whisperPath.join(
+          whisperOs.tmpdir(),
+          "english-somali-whisper-"
+        )
+      );
+
+      wavPath = whisperPath.join(tempDir, "audio.wav");
+      const outputBase = whisperPath.join(tempDir, "result");
+      srtPath = outputBase + ".srt";
+
+      /* -----------------------------
+         VIDEO → WAV
+         ----------------------------- */
+
+      const ffmpeg = whisperSpawn(
+        "ffmpeg",
+        [
+          "-y",
+          "-i", videoPath,
+          "-vn",
+          "-ac", "1",
+          "-ar", "16000",
+          "-c:a", "pcm_s16le",
+          wavPath
+        ],
+        {
+          stdio: ["ignore", "pipe", "pipe"]
+        }
+      );
+
+      let ffmpegError = "";
+
+      ffmpeg.stderr.on("data", (d) => {
+        ffmpegError += d.toString();
+      });
+
+      await new Promise((resolve, reject) => {
+        ffmpeg.on("error", reject);
+
+        ffmpeg.on("close", (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(
+              new Error(
+                "FFmpeg error: " +
+                ffmpegError.slice(-1500)
+              )
+            );
+          }
+        });
+      });
+
+      /* -----------------------------
+         WHISPER PATHS
+         ----------------------------- */
+
+      const whisperBin = whisperPath.join(
+        process.cwd(),
+        "whisper.cpp",
+        "build",
+        "bin",
+        "whisper-cli"
+      );
+
+      const whisperModel = whisperPath.join(
+        process.cwd(),
+        "whisper.cpp",
+        "models",
+        "ggml-base.en.bin"
+      );
+
+      if (
+        !whisperFs.existsSync(whisperBin) ||
+        !whisperFs.existsSync(whisperModel)
+      ) {
+        throw new Error(
+          "Whisper binary ama English model lama helin."
+        );
+      }
+
+      /* -----------------------------
+         WHISPER → REAL SRT TIMESTAMPS
+         ----------------------------- */
+
+      const whisper = whisperSpawn(
+        whisperBin,
+        [
+          "-m", whisperModel,
+          "-f", wavPath,
+          "-osrt",
+          "-of", outputBase,
+          "-l", "en",
+          "-np"
+        ],
+        {
+          stdio: ["ignore", "pipe", "pipe"]
+        }
+      );
+
+      let whisperError = "";
+
+      whisper.stderr.on("data", (d) => {
+        whisperError += d.toString();
+      });
+
+      await new Promise((resolve, reject) => {
+        whisper.on("error", reject);
+
+        whisper.on("close", (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(
+              new Error(
+                "Whisper error: " +
+                whisperError.slice(-1500)
+              )
+            );
+          }
+        });
+      });
+
+      if (!whisperFs.existsSync(srtPath)) {
+        throw new Error(
+          "Whisper SRT file lama soo saarin."
+        );
+      }
+
+      const srt = whisperFs
+        .readFileSync(srtPath, "utf8")
+        .trim();
+
+      if (!srt) {
+        throw new Error(
+          "Whisper wax English ah kama helin video-ga."
+        );
+      }
+
+      /* -----------------------------
+         SRT → SUBTITLE ROWS
+         ----------------------------- */
+
+      function parseTime(value) {
+        const match = String(value)
+          .trim()
+          .match(
+            /(\d+):(\d{2}):(\d{2}),(\d{3})/
+          );
+
+        if (!match) return NaN;
+
+        const h = Number(match[1]);
+        const m = Number(match[2]);
+        const sec = Number(match[3]);
+        const ms = Number(match[4]);
+
+        return (
+          h * 3600 +
+          m * 60 +
+          sec +
+          ms / 1000
+        );
+      }
+
+      const blocks = srt
+        .replace(/\r/g, "")
+        .split(/\n\s*\n/)
+        .filter(Boolean);
+
+      const lines = [];
+
+      for (const block of blocks) {
+        const parts = block
+          .split("\n")
+          .map(x => x.trim())
+          .filter(Boolean);
+
+        if (parts.length < 3) continue;
+
+        const timing = parts[1].match(
+          /^(.+?)\s*-->\s*(.+?)$/
+        );
+
+        if (!timing) continue;
+
+        const start = parseTime(timing[1]);
+        const end = parseTime(timing[2]);
+
+        const en = parts
+          .slice(2)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        if (
+          !Number.isFinite(start) ||
+          !Number.isFinite(end) ||
+          end <= start ||
+          !en
+        ) {
+          continue;
+        }
+
+        lines.push({
+          start: Number(start.toFixed(2)),
+          end: Number(end.toFixed(2)),
+          en,
+          so: ""
+        });
+      }
+
+      if (!lines.length) {
+        throw new Error(
+          "Whisper subtitles lama fahmi karin."
+        );
+      }
+
+      return res.json({
+        ok: true,
+        count: lines.length,
+        lines
+      });
+
+    } catch (err) {
+      console.error(
+        "LOCAL WHISPER ERROR:",
+        err
+      );
+
+      return res.status(500).json({
+        ok: false,
+        error:
+          err?.message ||
+          "Whisper subtitles lama samayn karin."
+      });
+
+    } finally {
+      try {
+        if (
+          req.file?.path &&
+          whisperFs.existsSync(req.file.path)
+        ) {
+          whisperFs.unlinkSync(req.file.path);
+        }
+
+        if (
+          wavPath &&
+          whisperFs.existsSync(wavPath)
+        ) {
+          whisperFs.unlinkSync(wavPath);
+        }
+
+        if (
+          srtPath &&
+          whisperFs.existsSync(srtPath)
+        ) {
+          whisperFs.unlinkSync(srtPath);
+        }
+      } catch {}
+    }
+  }
+);
+
 // YOUTUBE LESSON API
 // ===============================
 

@@ -17,6 +17,7 @@
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",
     "passport-google-oauth20": "^2.0.0",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "youtube-transcript-plus": "^2.0.3"
   }
 }

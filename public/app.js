@@ -2437,3 +2437,330 @@ boot();
   } catch {}
 
 })();
+
+
+/* =====================================================
+   YOUTUBE AUTO SUBTITLE DASHBOARD
+   ===================================================== */
+
+(() => {
+  const autoBtn = document.getElementById("autoYoutubeSubtitles");
+  const urlInput = document.getElementById("youtubeUrl");
+  const rows = document.getElementById("youtubeSubtitleRows");
+  const status = document.getElementById("youtubeSubtitleStatus");
+
+  if (!autoBtn || !urlInput || !rows) return;
+
+  function esc(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function addAutoRow(data) {
+    const row = document.createElement("div");
+    row.className = "subtitle-row youtube-subtitle-row";
+
+    row.innerHTML = `
+      <input
+        class="subtitle-start"
+        type="number"
+        step="0.1"
+        min="0"
+        value="${esc(data.start)}"
+        placeholder="Start (sec)"
+      >
+
+      <input
+        class="subtitle-end"
+        type="number"
+        step="0.1"
+        min="0"
+        value="${esc(data.end)}"
+        placeholder="End (sec)"
+      >
+
+      <input
+        class="subtitle-english"
+        type="text"
+        value="${esc(data.en)}"
+        placeholder="English"
+      >
+
+      <input
+        class="subtitle-somali"
+        type="text"
+        value=""
+        placeholder="Somali"
+      >
+
+      <button
+        type="button"
+        class="btn btn-secondary remove-subtitle">
+        ✕
+      </button>
+    `;
+
+    rows.appendChild(row);
+  }
+
+  autoBtn.addEventListener("click", async () => {
+    const youtubeUrl = String(urlInput.value || "").trim();
+
+    if (!youtubeUrl) {
+      alert("Marka hore geli YouTube URL.");
+      return;
+    }
+
+    autoBtn.disabled = true;
+    autoBtn.textContent = "⏳ SOO SAARAYA...";
+
+    if (status) {
+      status.classList.remove("hidden");
+      status.textContent =
+        "🤖 YouTube English subtitles ayaa la soo saaraya...";
+    }
+
+    try {
+      const response = await fetch(
+        "/api/admin/youtube-transcript",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ youtubeUrl })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error ||
+          "English subtitles lama heli karin."
+        );
+      }
+
+      rows.innerHTML = "";
+
+      for (const line of data.lines) {
+        addAutoRow(line);
+      }
+
+      if (status) {
+        status.textContent =
+          `✅ ${data.count} English subtitle rows ayaa la helay. Hadda waad sixi kartaa English-ka oo Somali-ga geli kartaa.`;
+      }
+
+    } catch (err) {
+      console.error(err);
+
+      if (status) {
+        status.textContent =
+          "❌ " +
+          (err.message ||
+            "Automatic subtitles lama heli karin.");
+      }
+
+      alert(
+        err.message ||
+        "Automatic subtitles lama heli karin."
+      );
+
+    } finally {
+      autoBtn.disabled = false;
+      autoBtn.textContent = "🤖 AUTO SUBTITLES";
+    }
+  });
+})();
+
+/* =====================================================
+   VIDEO FILE PICKER + WHISPER GENERATOR
+   ===================================================== */
+document.addEventListener("DOMContentLoaded", () => {
+  const fileInput = document.getElementById("youtubeWhisperFile");
+  const chooseBtn = document.getElementById("chooseYoutubeWhisperFile");
+  const generateBtn = document.getElementById("generateYoutubeWhisper");
+  const fileName = document.getElementById("youtubeWhisperFileName");
+  const status = document.getElementById("youtubeWhisperStatus");
+  const rows = document.getElementById("youtubeSubtitleRows");
+
+  if (!fileInput || !chooseBtn || !generateBtn) {
+    console.log("Whisper video controls lama helin.");
+    return;
+  }
+
+  /* CHOOSE VIDEO */
+  chooseBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    fileInput.value = "";
+    fileInput.click();
+  });
+
+  /* VIDEO SELECTED */
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files && fileInput.files[0];
+
+    if (!file) {
+      fileName.textContent = "Video lama dooran.";
+      chooseBtn.textContent = "📁 CHOOSE VIDEO";
+      return;
+    }
+
+    fileName.textContent =
+      "✅ " + file.name + " (" +
+      (file.size / 1024 / 1024).toFixed(1) +
+      " MB)";
+
+    chooseBtn.textContent = "📁 CHANGE VIDEO";
+
+    status.textContent =
+      "✅ Video waa la doortay. Hadda riix GENERATE FROM VIDEO.";
+  });
+
+  /* GENERATE ENGLISH SUBTITLES */
+  generateBtn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const file = fileInput.files && fileInput.files[0];
+
+    if (!file) {
+      alert("❌ Marka hore riix CHOOSE VIDEO oo dooro video.");
+      return;
+    }
+
+    generateBtn.disabled = true;
+    chooseBtn.disabled = true;
+    generateBtn.textContent = "⏳ WHISPER WAA SHAQAYNAYAA...";
+
+    status.textContent =
+      "🎙️ Video-ga ayaa la dirayaa. Fadlan sug...";
+
+    try {
+      const formData = new FormData();
+      formData.append("video", file);
+
+      const response = await fetch(
+        "/api/admin/whisper-subtitles",
+        {
+          method: "POST",
+          body: formData
+        }
+      );
+
+      let data;
+
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(
+          "Server-ku jawaab sax ah ma soo celin."
+        );
+      }
+
+      if (!response.ok || !data.ok) {
+        throw new Error(
+          data.error ||
+          "Whisper subtitles lama samayn karin."
+        );
+      }
+
+      if (!Array.isArray(data.lines) || !data.lines.length) {
+        throw new Error(
+          "Whisper wax English subtitles ah kama helin video-ga."
+        );
+      }
+
+      /* Clear old rows */
+      rows.innerHTML = "";
+
+      /* Escape HTML */
+      const esc = (value) =>
+        String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+
+      /* Add Whisper rows */
+      for (const line of data.lines) {
+        const row = document.createElement("div");
+
+        row.className =
+          "subtitle-row youtube-subtitle-row";
+
+        row.innerHTML = `
+          <input
+            class="subtitle-start"
+            type="number"
+            step="0.1"
+            min="0"
+            value="${esc(line.start)}"
+            placeholder="Start (sec)"
+          >
+
+          <input
+            class="subtitle-end"
+            type="number"
+            step="0.1"
+            min="0"
+            value="${esc(line.end)}"
+            placeholder="End (sec)"
+          >
+
+          <input
+            class="subtitle-english"
+            type="text"
+            value="${esc(line.en)}"
+            placeholder="English"
+          >
+
+          <input
+            class="subtitle-somali"
+            type="text"
+            value=""
+            placeholder="Somali"
+          >
+
+          <button
+            type="button"
+            class="btn btn-secondary remove-subtitle">
+            ✕
+          </button>
+        `;
+
+        rows.appendChild(row);
+      }
+
+      status.textContent =
+        `✅ ${data.count || data.lines.length} English subtitle rows ayaa la sameeyay. Hadda English-ka sax oo Somali geli.`;
+
+    } catch (error) {
+      console.error("WHISPER FRONTEND ERROR:", error);
+
+      status.textContent =
+        "❌ " +
+        (error.message ||
+          "Whisper subtitles lama samayn karin.");
+
+      alert(
+        error.message ||
+        "Whisper subtitles lama samayn karin."
+      );
+
+    } finally {
+      generateBtn.disabled = false;
+      chooseBtn.disabled = false;
+      generateBtn.textContent =
+        "🎙️ GENERATE FROM VIDEO";
+    }
+  });
+});

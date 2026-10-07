@@ -471,6 +471,54 @@
               </div>
 
               <button
+                id="autoYoutubeSubtitles"
+                type="button"
+                class="btn btn-primary">
+                🤖 AUTO SUBTITLES
+              </button>
+
+              <div id="youtubeWhisperFallback" style="margin:12px 0;padding:12px;border:1px solid rgba(124,92,255,.35);border-radius:12px;">
+                <strong>🎙️ VIDEO FILE → ENGLISH SUBTITLES</strong>
+                <p style="margin:6px 0;font-size:.9rem;opacity:.8;">
+                  Haddii YouTube transcript-ka la waayo, dooro video/audio file aad haysato si Whisper loogu sameeyo English timestamps.
+                </p>
+                <input
+                  id="youtubeWhisperFile"
+                  type="file"
+                  accept="video/*"
+                  style="display:none;"
+                >
+
+                <button
+                  type="button"
+                  id="chooseYoutubeWhisperFile"
+                  class="btn btn-secondary"
+                  style="width:100%;margin:10px 0;">
+                  📁 CHOOSE VIDEO
+                </button>
+
+                <div
+                  id="youtubeWhisperFileName"
+                  style="margin:8px 0;font-size:.9rem;opacity:.85;">
+                  Video lama dooran.
+                </div>
+
+                <button
+                  type="button"
+                  id="generateYoutubeWhisper"
+                  class="btn btn-primary"
+                  style="width:100%;">
+                  🎙️ GENERATE FROM VIDEO
+                </button>
+
+                <div
+                  id="youtubeWhisperStatus"
+                  style="margin-top:8px;">
+                </div>
+              </div>
+
+
+              <button
                 id="addYoutubeSubtitle"
                 type="button"
                 class="btn btn-secondary">
