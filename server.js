@@ -1717,6 +1717,187 @@ app.post(
   }
 );
 
+
+// ===============================
+// YOUTUBE LESSON API
+// ===============================
+
+app.post(
+  "/api/admin/youtube-lesson",
+  admin,
+  async (req, res) => {
+    try {
+      const {
+        title,
+        description,
+        youtubeUrl,
+        lines
+      } = req.body;
+
+      if (!title || !String(title).trim()) {
+        return res.status(400).json({
+          error: "Magaca casharka geli."
+        });
+      }
+
+      if (!youtubeUrl || !String(youtubeUrl).trim()) {
+        return res.status(400).json({
+          error: "YouTube URL geli."
+        });
+      }
+
+      function getYoutubeId(value) {
+        try {
+          const url = new URL(String(value).trim());
+
+          if (url.hostname.includes("youtu.be")) {
+            return url.pathname
+              .slice(1)
+              .split("/")[0];
+          }
+
+          if (url.hostname.includes("youtube.com")) {
+            if (url.pathname === "/watch") {
+              return url.searchParams.get("v");
+            }
+
+            if (url.pathname.startsWith("/shorts/")) {
+              return url.pathname
+                .split("/")[2];
+            }
+
+            if (url.pathname.startsWith("/embed/")) {
+              return url.pathname
+                .split("/")[2];
+            }
+          }
+
+          return null;
+        } catch {
+          return null;
+        }
+      }
+
+      const youtubeId = getYoutubeId(youtubeUrl);
+
+      if (!youtubeId) {
+        return res.status(400).json({
+          error: "YouTube URL sax ah geli."
+        });
+      }
+
+      let parsedLines = [];
+
+      if (typeof lines === "string") {
+        try {
+          parsedLines = JSON.parse(lines);
+        } catch {
+          return res.status(400).json({
+            error: "Subtitles JSON sax ma aha."
+          });
+        }
+      } else if (Array.isArray(lines)) {
+        parsedLines = lines;
+      }
+
+      if (!Array.isArray(parsedLines) || !parsedLines.length) {
+        return res.status(400).json({
+          error: "Ku dar ugu yaraan hal subtitle."
+        });
+      }
+
+      const cleanLines = parsedLines
+        .map((x) => ({
+          start: Number(x.start) || 0,
+          end: Number(x.end) || 0,
+          en: String(x.en || "").trim(),
+          so: String(x.so || "").trim()
+        }))
+        .filter((x) =>
+          x.en &&
+          x.end > x.start
+        );
+
+      if (!cleanLines.length) {
+        return res.status(400).json({
+          error: "Subtitle sax ah lama helin."
+        });
+      }
+
+      const id = Date.now().toString();
+
+      const cleanTitle =
+        String(title).trim();
+
+      const cleanDescription =
+        String(description || "").trim();
+
+      const youtubeEmbed =
+        `https://www.youtube.com/embed/${encodeURIComponent(youtubeId)}`;
+
+      const result = await db.query(
+        `INSERT INTO lessons
+         (
+           id,
+           title,
+           description,
+           video,
+           video_url,
+           video_public_id,
+           lines
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+         RETURNING *`,
+        [
+          id,
+          cleanTitle,
+          cleanDescription,
+          youtubeEmbed,
+          youtubeEmbed,
+          `youtube:${youtubeId}`,
+          JSON.stringify(cleanLines)
+        ]
+      );
+
+      const row = result.rows[0];
+
+      res.json({
+        ok: true,
+        item: {
+          id: row.id,
+          title: row.title,
+          description: row.description || "",
+          video: row.video_url || row.video || "",
+          videoUrl: row.video_url || "",
+          videoPublicId: row.video_public_id || "",
+          youtubeId,
+          youtubeUrl,
+          lines: Array.isArray(row.lines)
+            ? row.lines
+            : [],
+          createdAt: row.created_at
+            ? new Date(row.created_at).toISOString()
+            : null
+        },
+        message: "✅ YouTube casharka waa la publish gareeyay."
+      });
+
+    } catch (error) {
+      console.error(
+        "YOUTUBE LESSON ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error:
+          error.message ||
+          "YouTube lesson error"
+      });
+    }
+  }
+);
+
+
 /* =========================
    DELETE LESSON
 ========================= */
