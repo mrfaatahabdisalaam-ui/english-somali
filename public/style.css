@@ -5627,3 +5627,28 @@ iframe{
   }
 }
 
+
+
+/* SUBTITLES ALWAYS VISIBLE */
+#lessons .lines .line{
+  display:block !important;
+  margin:0;
+  padding:0 0 14px;
+  border:0;
+}
+
+#lessons .lines .line .en{
+  margin:0;
+  padding:0;
+  color:#fff;
+  font-size:24px;
+  font-weight:600;
+  line-height:1.55;
+}
+
+#lessons .lines .line .so{
+  margin-top:7px;
+  color:#8fd8ff;
+  font-size:18px;
+  line-height:1.55;
+}

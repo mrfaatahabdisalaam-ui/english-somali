@@ -471,7 +471,6 @@ async function wireYoutubeLessons() {
         const active = time >= start && time < end;
 
         row.classList.toggle('active', active);
-        row.classList.toggle('is-hidden', !active);
 
         if (active) {
           activeIndex = index;
@@ -669,7 +668,6 @@ function wireLessons() {
           time >= start && time < end;
 
         row.classList.toggle('active', active);
-      row.classList.toggle('is-hidden', !active);
 
         if (active) {
           activeIndex = index;
